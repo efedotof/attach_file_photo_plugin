@@ -49,6 +49,10 @@ abstract class DeviceMediaLibraryPlatform extends PlatformInterface {
     throw UnimplementedError('getMediaFromAlbum() has not been implemented.');
   }
 
+  Future<Uint8List?> getFileBytes(String uri) async {
+    throw UnimplementedError('getFileBytes() has not been implemented.');
+  }
+
   Future<Uint8List?> getThumbnail({
     required String mediaId,
     required String mediaType,

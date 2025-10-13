@@ -14,7 +14,8 @@ class DeviceMediaLibrary {
     return DeviceMediaLibraryPlatform.instance.requestPermission();
   }
 
-  Future<List<Map<String, dynamic>>?> getImages({int? limit, int? offset, String? albumId}) {
+  Future<List<Map<String, dynamic>>?> getImages(
+      {int? limit, int? offset, String? albumId}) {
     return DeviceMediaLibraryPlatform.instance.getImages(
       limit: limit,
       offset: offset,
@@ -22,7 +23,8 @@ class DeviceMediaLibrary {
     );
   }
 
-  Future<List<Map<String, dynamic>>?> getVideos({int? limit, int? offset, String? albumId}) {
+  Future<List<Map<String, dynamic>>?> getVideos(
+      {int? limit, int? offset, String? albumId}) {
     return DeviceMediaLibraryPlatform.instance.getVideos(
       limit: limit,
       offset: offset,
@@ -30,7 +32,8 @@ class DeviceMediaLibrary {
     );
   }
 
-  Future<List<Map<String, dynamic>>?> getAllMedia({int? limit, int? offset, String? albumId}) {
+  Future<List<Map<String, dynamic>>?> getAllMedia(
+      {int? limit, int? offset, String? albumId}) {
     return DeviceMediaLibraryPlatform.instance.getAllMedia(
       limit: limit,
       offset: offset,
@@ -42,12 +45,17 @@ class DeviceMediaLibrary {
     return DeviceMediaLibraryPlatform.instance.getAlbums();
   }
 
-  Future<List<Map<String, dynamic>>?> getMediaFromAlbum({required String albumId, int? limit, int? offset}) {
+  Future<List<Map<String, dynamic>>?> getMediaFromAlbum(
+      {required String albumId, int? limit, int? offset}) {
     return DeviceMediaLibraryPlatform.instance.getMediaFromAlbum(
       albumId: albumId,
       limit: limit,
       offset: offset,
     );
+  }
+
+  Future<Uint8List?> getFileBytes(String uri) async {
+    return DeviceMediaLibraryPlatform.instance.getFileBytes(uri);
   }
 
   Future<Uint8List?> getThumbnail({

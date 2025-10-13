@@ -57,6 +57,13 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware
                     )
                 }
             }
+            "readFileByUri" -> {
+                if (hasPermission()) {
+                    readFileByUri(call, result)
+                } else {
+                    result.error("PERMISSION_DENIED", "Permission not granted", null)
+                }
+            }
             "getVideos" -> {
                 if (hasPermission()) {
                     getMedia(call, result, MediaType.VIDEO)
@@ -251,62 +258,115 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware
 
         val sortOrder = "$dateColumn DESC"
 
-        val cursor: Cursor? =
-                contentResolver.query(uri, projection, selection, selectionArgs, sortOrder)
+        try {
+            val cursor: Cursor? =
+                    contentResolver.query(uri, projection, selection, selectionArgs, sortOrder)
 
-        cursor?.use { c ->
-            var count = 0
-            var currentPosition = 0
+            cursor?.use { c ->
+                var count = 0
+                var currentPosition = 0
 
-            while (c.moveToNext() && (limit == null || count < limit)) {
-                if (currentPosition >= offset) {
-                    val id = c.getLong(c.getColumnIndexOrThrow(idColumn))
-                    val name =
-                            c.getString(
-                                    c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
-                            )
-                    val path = c.getString(c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA))
-                    val dateAdded = c.getLong(c.getColumnIndexOrThrow(dateColumn))
-                    val size = c.getLong(c.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE))
-                    val width = c.getInt(c.getColumnIndexOrThrow(MediaStore.MediaColumns.WIDTH))
-                    val height = c.getInt(c.getColumnIndexOrThrow(MediaStore.MediaColumns.HEIGHT))
-                    val bucketId =
-                            c.getString(c.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_ID))
-                    val bucketName =
-                            c.getString(
-                                    c.getColumnIndexOrThrow(
-                                            MediaStore.MediaColumns.BUCKET_DISPLAY_NAME
+                while (c.moveToNext() && (limit == null || count < limit)) {
+                    if (currentPosition >= offset) {
+                        val id = c.getLong(c.getColumnIndexOrThrow(idColumn))
+                        val name =
+                                c.getString(
+                                        c.getColumnIndexOrThrow(
+                                                MediaStore.MediaColumns.DISPLAY_NAME
+                                        )
+                                )
+
+                        // Создаем content URI
+                        val contentUri =
+                                when (mediaType) {
+                                    MediaType.IMAGE ->
+                                            ContentUris.withAppendedId(
+                                                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                                                    id
+                                            )
+                                    MediaType.VIDEO ->
+                                            ContentUris.withAppendedId(
+                                                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                                                    id
+                                            )
+                                }
+
+                        val dateAdded = c.getLong(c.getColumnIndexOrThrow(dateColumn))
+                        val size = c.getLong(c.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE))
+                        val width = c.getInt(c.getColumnIndexOrThrow(MediaStore.MediaColumns.WIDTH))
+                        val height =
+                                c.getInt(c.getColumnIndexOrThrow(MediaStore.MediaColumns.HEIGHT))
+                        val bucketId =
+                                c.getString(
+                                        c.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_ID)
+                                )
+                        val bucketName =
+                                c.getString(
+                                        c.getColumnIndexOrThrow(
+                                                MediaStore.MediaColumns.BUCKET_DISPLAY_NAME
+                                        )
+                                )
+
+                        val mediaData =
+                                mutableMapOf(
+                                        "id" to id.toString(),
+                                        "name" to name,
+                                        "uri" to contentUri.toString(), // Основное поле - URI
+                                        "path" to
+                                                contentUri.toString(), // Для обратной совместимости
+                                        "dateAdded" to dateAdded,
+                                        "size" to size,
+                                        "width" to width,
+                                        "height" to height,
+                                        "albumId" to bucketId,
+                                        "albumName" to bucketName,
+                                        "type" to mediaType.name.lowercase()
+                                )
+
+                        if (mediaType == MediaType.VIDEO) {
+                            val duration =
+                                    c.getLong(
+                                            c.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
                                     )
-                            )
+                            mediaData["duration"] = duration
+                        }
 
-                    val mediaData =
-                            mutableMapOf(
-                                    "id" to id.toString(),
-                                    "name" to name,
-                                    "path" to path,
-                                    "dateAdded" to dateAdded,
-                                    "size" to size,
-                                    "width" to width,
-                                    "height" to height,
-                                    "albumId" to bucketId,
-                                    "albumName" to bucketName,
-                                    "type" to mediaType.name.lowercase()
-                            )
-
-                    if (mediaType == MediaType.VIDEO) {
-                        val duration =
-                                c.getLong(c.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION))
-                        mediaData["duration"] = duration
+                        mediaList.add(mediaData)
+                        count++
                     }
-
-                    mediaList.add(mediaData)
-                    count++
+                    currentPosition++
                 }
-                currentPosition++
             }
-        }
 
-        result.success(mediaList)
+            result.success(mediaList)
+        } catch (e: SecurityException) {
+            result.error("PERMISSION_DENIED", "Permission denied: ${e.message}", null)
+        } catch (e: Exception) {
+            result.error("QUERY_ERROR", "Error querying media: ${e.message}", null)
+        }
+    }
+    private fun readFileByUri(call: MethodCall, result: Result) {
+        try {
+            val uriString =
+                    call.argument<String>("uri")
+                            ?: run {
+                                result.error("INVALID_ARGUMENT", "URI is required", null)
+                                return
+                            }
+
+            val uri = Uri.parse(uriString)
+            val contentResolver = context.contentResolver
+
+            contentResolver.openInputStream(uri)?.use { inputStream ->
+                val bytes = inputStream.readBytes()
+                result.success(bytes)
+            }
+                    ?: run { result.error("FILE_ERROR", "Cannot open file stream", null) }
+        } catch (e: SecurityException) {
+            result.error("PERMISSION_DENIED", "Permission denied: ${e.message}", null)
+        } catch (e: Exception) {
+            result.error("FILE_ERROR", "Error reading file: ${e.message}", null)
+        }
     }
 
     private fun getAllMedia(call: MethodCall, result: Result) {
@@ -589,7 +649,11 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware
                 result.error("THUMBNAIL_ERROR", "Error generating thumbnail", null)
             }
         } catch (e: Exception) {
-            result.error("THUMBNAIL_ERROR", "Error generating thumbnail: ${e.message}", e.toString())
+            result.error(
+                    "THUMBNAIL_ERROR",
+                    "Error generating thumbnail: ${e.message}",
+                    e.toString()
+            )
         }
     }
 
@@ -600,7 +664,7 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware
                 val options = BitmapFactory.Options()
                 options.inJustDecodeBounds = true
                 BitmapFactory.decodeStream(inputStream, null, options)
-                
+
                 options.inSampleSize = calculateInSampleSize(options, reqWidth, reqHeight)
                 options.inJustDecodeBounds = false
                 options.inPreferredConfig = Bitmap.Config.RGB_565
@@ -634,15 +698,15 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware
                     val columnIndex = c.getColumnIndex(filePathColumn[0])
                     if (columnIndex != -1) {
                         val filePath = c.getString(columnIndex)
-                        
+
                         val options = BitmapFactory.Options()
                         options.inJustDecodeBounds = true
                         BitmapFactory.decodeFile(filePath, options)
-                        
+
                         options.inSampleSize = calculateInSampleSize(options, reqWidth, reqHeight)
                         options.inJustDecodeBounds = false
                         options.inPreferredConfig = Bitmap.Config.RGB_565
-                        
+
                         val scaledBitmap = BitmapFactory.decodeFile(filePath, options)
                         if (scaledBitmap != null) {
                             Bitmap.createScaledBitmap(scaledBitmap, reqWidth, reqHeight, true)
@@ -690,26 +754,25 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, MethodCallHandler, ActivityAware
                     val columnIndex = c.getColumnIndex(filePathColumn[0])
                     if (columnIndex != -1) {
                         val filePath = c.getString(columnIndex)
-                        
+
                         try {
                             val retriever = MediaMetadataRetriever()
                             retriever.setDataSource(filePath)
                             val frame = retriever.frameAtTime
                             retriever.release()
-                            
+
                             if (frame != null) {
                                 return Bitmap.createScaledBitmap(frame, width, height, true)
                             }
                         } catch (e: Exception) {
                             // Ignore and try next method
                         }
-                        
+
                         ThumbnailUtils.createVideoThumbnail(
-                            filePath,
-                            MediaStore.Images.Thumbnails.MINI_KIND
-                        )?.let { 
-                            Bitmap.createScaledBitmap(it, width, height, true) 
-                        }
+                                        filePath,
+                                        MediaStore.Images.Thumbnails.MINI_KIND
+                                )
+                                ?.let { Bitmap.createScaledBitmap(it, width, height, true) }
                     } else {
                         null
                     }
