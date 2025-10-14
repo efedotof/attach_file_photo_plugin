@@ -1,14 +1,17 @@
 package com.example.device_media_library
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.media.ThumbnailUtils
 import android.net.Uri
 import android.provider.MediaStore
+import android.database.Cursor
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel.Result
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 
 class ThumbnailManager(private val context: Context) {
 
@@ -60,11 +63,8 @@ class ThumbnailManager(private val context: Context) {
                 options.inPreferredConfig = Bitmap.Config.RGB_565
 
                 context.contentResolver.openInputStream(uri)?.use { newInputStream ->
-                    val scaledBitmap = BitmapFactory.decodeStream(newInputStream, null, options)
-                    if (scaledBitmap != null) {
+                    BitmapFactory.decodeStream(newInputStream, null, options)?.let { scaledBitmap ->
                         Bitmap.createScaledBitmap(scaledBitmap, reqWidth, reqHeight, true)
-                    } else {
-                        null
                     }
                 }
             }
@@ -80,7 +80,7 @@ class ThumbnailManager(private val context: Context) {
     private fun createImageThumbnailFallback(uri: Uri, reqWidth: Int, reqHeight: Int): Bitmap? {
         return try {
             val filePathColumn = arrayOf(MediaStore.Images.Media.DATA)
-            val cursor = context.contentResolver.query(uri, filePathColumn, null, null, null)
+            val cursor: Cursor? = context.contentResolver.query(uri, filePathColumn, null, null, null)
             cursor?.use { c ->
                 if (c.moveToFirst()) {
                     val columnIndex = c.getColumnIndex(filePathColumn[0])
@@ -96,18 +96,13 @@ class ThumbnailManager(private val context: Context) {
                         options.inPreferredConfig = Bitmap.Config.RGB_565
 
                         val scaledBitmap = BitmapFactory.decodeFile(filePath, options)
-                        if (scaledBitmap != null) {
-                            Bitmap.createScaledBitmap(scaledBitmap, reqWidth, reqHeight, true)
-                        } else {
-                            null
+                        return scaledBitmap?.let { 
+                            Bitmap.createScaledBitmap(it, reqWidth, reqHeight, true)
                         }
-                    } else {
-                        null
                     }
-                } else {
-                    null
                 }
             }
+            null
         } catch (e: Exception) {
             null
         }
@@ -133,7 +128,7 @@ class ThumbnailManager(private val context: Context) {
     private fun createVideoThumbnailFallback(uri: Uri, width: Int, height: Int): Bitmap? {
         return try {
             val filePathColumn = arrayOf(MediaStore.Video.Media.DATA)
-            val cursor = context.contentResolver.query(uri, filePathColumn, null, null, null)
+            val cursor: Cursor? = context.contentResolver.query(uri, filePathColumn, null, null, null)
             cursor?.use { c ->
                 if (c.moveToFirst()) {
                     val columnIndex = c.getColumnIndex(filePathColumn[0])

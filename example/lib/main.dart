@@ -4,6 +4,8 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:device_media_library/device_media_library.dart';
 
+
+
 void main() {
   runApp(MyApp());
 }
@@ -306,6 +308,30 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
+  // Новая функция для вывода пути файла
+  void _printFilePath(Map<String, dynamic> media) {
+    final mediaId = _getString(media, 'id');
+    final mediaType = _getString(media, 'type');
+    final filePath = _getString(media, 'filePath');
+    final uri = _getString(media, 'uri');
+    
+    // Пробуем получить путь из разных возможных полей
+    String path = filePath.isNotEmpty ? filePath : uri;
+    
+    if (path.isEmpty) {
+      path = _getString(media, 'path');
+    }
+
+    debugPrint('=== File Information ===');
+    debugPrint('Media ID: $mediaId');
+    debugPrint('Media Type: $mediaType');
+    debugPrint('File Path: $path');
+    debugPrint('========================');
+    
+    // Также выводим в консоль для удобства копирования
+    print('FILE_PATH: $path');
+  }
+
   @override
   void dispose() {
     _scrollController.dispose();
@@ -513,69 +539,74 @@ class _MyAppState extends State<MyApp> {
                                 final mediaType = _getString(media, 'type');
                                 final duration = _getInt(media, 'duration');
 
-                                return Stack(
-                                  children: [
-                                    _buildThumbnail(
-                                      mediaId,
-                                      mediaType,
-                                      200,
-                                      200,
-                                    ),
-                                    if (mediaType == 'video')
-                                      Positioned(
-                                        bottom: 4,
-                                        right: 4,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 4,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.black54,
-                                            borderRadius: BorderRadius.circular(
-                                              4,
+                                return GestureDetector(
+                                  onTap: () {
+                                    _printFilePath(media);
+                                  },
+                                  child: Stack(
+                                    children: [
+                                      _buildThumbnail(
+                                        mediaId,
+                                        mediaType,
+                                        200,
+                                        200,
+                                      ),
+                                      if (mediaType == 'video')
+                                        Positioned(
+                                          bottom: 4,
+                                          right: 4,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 4,
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.black54,
+                                              borderRadius: BorderRadius.circular(
+                                                4,
+                                              ),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                const Icon(
+                                                  Icons.play_arrow,
+                                                  size: 12,
+                                                  color: Colors.white,
+                                                ),
+                                                const SizedBox(width: 2),
+                                                Text(
+                                                  _formatDuration(duration),
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ],
                                             ),
                                           ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              const Icon(
-                                                Icons.play_arrow,
-                                                size: 12,
-                                                color: Colors.white,
-                                              ),
-                                              const SizedBox(width: 2),
-                                              Text(
-                                                _formatDuration(duration),
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                            ],
+                                        ),
+                                      Positioned(
+                                        top: 4,
+                                        left: 4,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(4),
+                                          decoration: const BoxDecoration(
+                                            color: Colors.black54,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Icon(
+                                            mediaType == 'video'
+                                                ? Icons.videocam
+                                                : Icons.photo,
+                                            size: 12,
+                                            color: Colors.white,
                                           ),
                                         ),
                                       ),
-                                    Positioned(
-                                      top: 4,
-                                      left: 4,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(4),
-                                        decoration: const BoxDecoration(
-                                          color: Colors.black54,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: Icon(
-                                          mediaType == 'video'
-                                              ? Icons.videocam
-                                              : Icons.photo,
-                                          size: 12,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 );
                               },
                             ),

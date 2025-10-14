@@ -1,5 +1,6 @@
 package com.example.device_media_library
 
+import android.content.Context
 import android.content.ContentUris
 import android.database.Cursor
 import android.provider.MediaStore
@@ -72,7 +73,7 @@ class MediaQueryManager(private val context: Context) {
                 var count = 0
                 var currentPosition = 0
 
-                while (c.moveToNext() && (limit == null || count < limit)) {
+                while (c.moveToNext() && (limit == null || count < limit!!)) {
                     if (currentPosition >= offset) {
                         val id = c.getLong(c.getColumnIndexOrThrow(idColumn))
                         val name = c.getString(c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME))
