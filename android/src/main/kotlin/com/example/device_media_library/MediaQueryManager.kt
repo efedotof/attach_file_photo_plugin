@@ -3,6 +3,7 @@ package com.example.device_media_library
 import android.content.Context
 import android.content.ContentUris
 import android.database.Cursor
+import android.net.Uri
 import android.provider.MediaStore
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel.Result
@@ -30,11 +31,11 @@ class MediaQueryManager(private val context: Context) {
             )
         }
 
+        // Убраны колонки DATA, используем только URI
         val projection = when (mediaType) {
             MediaType.IMAGE -> arrayOf(
                 MediaStore.Images.Media._ID,
                 MediaStore.Images.Media.DISPLAY_NAME,
-                MediaStore.Images.Media.DATA,
                 MediaStore.Images.Media.DATE_ADDED,
                 MediaStore.Images.Media.SIZE,
                 MediaStore.Images.Media.WIDTH,
@@ -45,7 +46,6 @@ class MediaQueryManager(private val context: Context) {
             MediaType.VIDEO -> arrayOf(
                 MediaStore.Video.Media._ID,
                 MediaStore.Video.Media.DISPLAY_NAME,
-                MediaStore.Video.Media.DATA,
                 MediaStore.Video.Media.DATE_ADDED,
                 MediaStore.Video.Media.SIZE,
                 MediaStore.Video.Media.WIDTH,
@@ -100,8 +100,7 @@ class MediaQueryManager(private val context: Context) {
                         val mediaData = mutableMapOf(
                             "id" to id.toString(),
                             "name" to name,
-                            "uri" to contentUri.toString(), // Основное поле - URI
-                            "path" to contentUri.toString(), // Для обратной совместимости
+                            "uri" to contentUri.toString(),
                             "dateAdded" to dateAdded,
                             "size" to size,
                             "width" to width,
@@ -177,11 +176,11 @@ class MediaQueryManager(private val context: Context) {
             )
         }
 
+        // Убраны колонки DATA
         val projection = when (mediaType) {
             MediaType.IMAGE -> arrayOf(
                 MediaStore.Images.Media._ID,
                 MediaStore.Images.Media.DISPLAY_NAME,
-                MediaStore.Images.Media.DATA,
                 MediaStore.Images.Media.DATE_ADDED,
                 MediaStore.Images.Media.SIZE,
                 MediaStore.Images.Media.WIDTH,
@@ -192,7 +191,6 @@ class MediaQueryManager(private val context: Context) {
             MediaType.VIDEO -> arrayOf(
                 MediaStore.Video.Media._ID,
                 MediaStore.Video.Media.DISPLAY_NAME,
-                MediaStore.Video.Media.DATA,
                 MediaStore.Video.Media.DATE_ADDED,
                 MediaStore.Video.Media.SIZE,
                 MediaStore.Video.Media.WIDTH,
@@ -223,7 +221,6 @@ class MediaQueryManager(private val context: Context) {
                 if (currentPosition >= offset) {
                     val id = c.getLong(c.getColumnIndexOrThrow(idColumn))
                     val name = c.getString(c.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME))
-                    val path = c.getString(c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA))
                     val dateAdded = c.getLong(c.getColumnIndexOrThrow(dateColumn))
                     val size = c.getLong(c.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE))
                     val width = c.getInt(c.getColumnIndexOrThrow(MediaStore.MediaColumns.WIDTH))
@@ -231,10 +228,22 @@ class MediaQueryManager(private val context: Context) {
                     val bucketId = c.getString(c.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_ID))
                     val bucketName = c.getString(c.getColumnIndexOrThrow(MediaStore.MediaColumns.BUCKET_DISPLAY_NAME))
 
+                    // Создаем content URI вместо использования пути
+                    val contentUri = when (mediaType) {
+                        MediaType.IMAGE -> ContentUris.withAppendedId(
+                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                            id
+                        )
+                        MediaType.VIDEO -> ContentUris.withAppendedId(
+                            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                            id
+                        )
+                    }
+
                     val mediaData = mutableMapOf(
                         "id" to id.toString(),
                         "name" to name,
-                        "path" to path,
+                        "uri" to contentUri.toString(),
                         "dateAdded" to dateAdded,
                         "size" to size,
                         "width" to width,
@@ -263,11 +272,11 @@ class MediaQueryManager(private val context: Context) {
         val albums = mutableMapOf<String, Map<String, Any?>>()
         val contentResolver = context.contentResolver
 
-        // Получение альбомов с изображениями
+        // Получение альбомов с изображениями - используем URI вместо DATA
         val imageProjection = arrayOf(
+            MediaStore.Images.Media._ID,
             MediaStore.Images.Media.BUCKET_ID,
-            MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
-            MediaStore.Images.Media.DATA
+            MediaStore.Images.Media.BUCKET_DISPLAY_NAME
         )
 
         val imageCursor: Cursor? = contentResolver.query(
@@ -280,26 +289,32 @@ class MediaQueryManager(private val context: Context) {
 
         imageCursor?.use { c ->
             while (c.moveToNext()) {
+                val id = c.getLong(c.getColumnIndexOrThrow(MediaStore.Images.Media._ID))
                 val bucketId = c.getString(c.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID))
                 val bucketName = c.getString(c.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_DISPLAY_NAME))
-                val data = c.getString(c.getColumnIndexOrThrow(MediaStore.Images.Media.DATA))
+
+                // Создаем URI для обложки
+                val coverUri = ContentUris.withAppendedId(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    id
+                )
 
                 if (!albums.containsKey(bucketId)) {
                     albums[bucketId] = mapOf(
                         "id" to bucketId,
                         "name" to bucketName,
-                        "coverPath" to data,
+                        "coverPath" to coverUri.toString(),
                         "type" to "mixed"
                     )
                 }
             }
         }
 
-        // Получение альбомов с видео
+        // Получение альбомов с видео - используем URI вместо DATA
         val videoProjection = arrayOf(
+            MediaStore.Video.Media._ID,
             MediaStore.Video.Media.BUCKET_ID,
-            MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
-            MediaStore.Video.Media.DATA
+            MediaStore.Video.Media.BUCKET_DISPLAY_NAME
         )
 
         val videoCursor: Cursor? = contentResolver.query(
@@ -312,9 +327,15 @@ class MediaQueryManager(private val context: Context) {
 
         videoCursor?.use { c ->
             while (c.moveToNext()) {
+                val id = c.getLong(c.getColumnIndexOrThrow(MediaStore.Video.Media._ID))
                 val bucketId = c.getString(c.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_ID))
                 val bucketName = c.getString(c.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_DISPLAY_NAME))
-                val data = c.getString(c.getColumnIndexOrThrow(MediaStore.Video.Media.DATA))
+
+                // Создаем URI для обложки
+                val coverUri = ContentUris.withAppendedId(
+                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                    id
+                )
 
                 if (albums.containsKey(bucketId)) {
                     val existing = albums[bucketId]!!.toMutableMap()
@@ -324,7 +345,7 @@ class MediaQueryManager(private val context: Context) {
                     albums[bucketId] = mapOf(
                         "id" to bucketId,
                         "name" to bucketName,
-                        "coverPath" to data,
+                        "coverPath" to coverUri.toString(),
                         "type" to "video"
                     )
                 }

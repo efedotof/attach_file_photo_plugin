@@ -20,7 +20,4 @@
         </intent>
     </queries>
     
-    <application>
-        <!-- Если нужно добавить activity или другие компоненты -->
-    </application>
 </manifest>

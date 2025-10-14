@@ -4,14 +4,10 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
-import android.media.ThumbnailUtils
 import android.net.Uri
-import android.provider.MediaStore
-import android.database.Cursor
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel.Result
 import java.io.ByteArrayOutputStream
-import java.io.IOException
 
 class ThumbnailManager(private val context: Context) {
 
@@ -69,41 +65,6 @@ class ThumbnailManager(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            try {
-                createImageThumbnailFallback(uri, reqWidth, reqHeight)
-            } catch (e2: Exception) {
-                null
-            }
-        }
-    }
-
-    private fun createImageThumbnailFallback(uri: Uri, reqWidth: Int, reqHeight: Int): Bitmap? {
-        return try {
-            val filePathColumn = arrayOf(MediaStore.Images.Media.DATA)
-            val cursor: Cursor? = context.contentResolver.query(uri, filePathColumn, null, null, null)
-            cursor?.use { c ->
-                if (c.moveToFirst()) {
-                    val columnIndex = c.getColumnIndex(filePathColumn[0])
-                    if (columnIndex != -1) {
-                        val filePath = c.getString(columnIndex)
-
-                        val options = BitmapFactory.Options()
-                        options.inJustDecodeBounds = true
-                        BitmapFactory.decodeFile(filePath, options)
-
-                        options.inSampleSize = calculateInSampleSize(options, reqWidth, reqHeight)
-                        options.inJustDecodeBounds = false
-                        options.inPreferredConfig = Bitmap.Config.RGB_565
-
-                        val scaledBitmap = BitmapFactory.decodeFile(filePath, options)
-                        return scaledBitmap?.let { 
-                            Bitmap.createScaledBitmap(it, reqWidth, reqHeight, true)
-                        }
-                    }
-                }
-            }
-            null
-        } catch (e: Exception) {
             null
         }
     }
@@ -115,47 +76,8 @@ class ThumbnailManager(private val context: Context) {
             val frame = retriever.frameAtTime
             retriever.release()
 
-            if (frame != null) {
-                Bitmap.createScaledBitmap(frame, width, height, true)
-            } else {
-                createVideoThumbnailFallback(uri, width, height)
-            }
-        } catch (e: Exception) {
-            createVideoThumbnailFallback(uri, width, height)
-        }
-    }
-
-    private fun createVideoThumbnailFallback(uri: Uri, width: Int, height: Int): Bitmap? {
-        return try {
-            val filePathColumn = arrayOf(MediaStore.Video.Media.DATA)
-            val cursor: Cursor? = context.contentResolver.query(uri, filePathColumn, null, null, null)
-            cursor?.use { c ->
-                if (c.moveToFirst()) {
-                    val columnIndex = c.getColumnIndex(filePathColumn[0])
-                    if (columnIndex != -1) {
-                        val filePath = c.getString(columnIndex)
-
-                        try {
-                            val retriever = MediaMetadataRetriever()
-                            retriever.setDataSource(filePath)
-                            val frame = retriever.frameAtTime
-                            retriever.release()
-
-                            if (frame != null) {
-                                return Bitmap.createScaledBitmap(frame, width, height, true)
-                            }
-                        } catch (e: Exception) {
-                            // Ignore and try next method
-                        }
-
-                        ThumbnailUtils.createVideoThumbnail(filePath, MediaStore.Images.Thumbnails.MINI_KIND)
-                            ?.let { Bitmap.createScaledBitmap(it, width, height, true) }
-                    } else {
-                        null
-                    }
-                } else {
-                    null
-                }
+            frame?.let { 
+                Bitmap.createScaledBitmap(it, width, height, true)
             }
         } catch (e: Exception) {
             null
