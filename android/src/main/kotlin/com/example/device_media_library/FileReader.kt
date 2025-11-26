@@ -2,36 +2,46 @@ package com.example.device_media_library
 
 import android.content.Context
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import io.flutter.plugin.common.MethodCall
-import io.flutter.plugin.common.MethodChannel.Result
+import io.flutter.plugin.common.MethodChannel
 import java.io.IOException
+import java.util.concurrent.ExecutorService
 
-class FileReader(private val context: Context) {
+/**
+ * Чтение произвольного URI (openInputStream) в фоновой задаче.
+ * Результат возвращается в UI-поток.
+ */
+class FileReader(
+    private val context: Context,
+    private val executor: ExecutorService,
+    private val mainHandler: Handler
+) {
 
-    fun readFileByUri(call: MethodCall, result: Result) {
-        try {
-            val uriString = call.argument<String>("uri") ?: run {
-                result.error("INVALID_ARGUMENT", "URI is required", null)
-                return
-            }
+    fun readFileByUri(call: MethodCall, result: MethodChannel.Result) {
+        val uriString = call.argument<String>("uri")
+        if (uriString.isNullOrEmpty()) {
+            result.error("INVALID_ARGUMENT", "URI is required", null)
+            return
+        }
+        val uri = Uri.parse(uriString)
 
-            val uri = Uri.parse(uriString)
-            val contentResolver = context.contentResolver
-
+        executor.execute {
             try {
-                contentResolver.openInputStream(uri)?.use { inputStream ->
-                    val bytes = inputStream.readBytes()
-                    result.success(bytes)
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    val bytes = input.readBytes()
+                    mainHandler.post { result.success(bytes) }
                 } ?: run {
-                    result.error("FILE_ERROR", "Cannot open file stream for URI: $uriString", null)
+                    mainHandler.post { result.error("FILE_ERROR", "Cannot open stream for $uriString", null) }
                 }
-            } catch (e: IOException) {
-                result.error("FILE_ERROR", "Error reading file: ${e.message}", null)
             } catch (e: SecurityException) {
-                result.error("PERMISSION_DENIED", "Permission denied for URI: ${e.message}", null)
+                mainHandler.post { result.error("PERMISSION_DENIED", "Permission denied: ${e.message}", null) }
+            } catch (e: IOException) {
+                mainHandler.post { result.error("FILE_ERROR", "IO error: ${e.message}", null) }
+            } catch (e: Exception) {
+                mainHandler.post { result.error("FILE_ERROR", "Unknown error: ${e.message}", null) }
             }
-        } catch (e: Exception) {
-            result.error("FILE_ERROR", "Error reading file: ${e.message}", null)
         }
     }
 }
