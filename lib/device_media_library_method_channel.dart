@@ -6,28 +6,34 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
 
   @override
   Future<String?> getPlatformVersion() async {
-    final version =
-        await methodChannel.invokeMethod<String>('getPlatformVersion');
+    final version = await methodChannel.invokeMethod<String>(
+      'getPlatformVersion',
+    );
     return version;
   }
 
   @override
   Future<bool> checkPermission() async {
-    final hasPermission =
-        await methodChannel.invokeMethod<bool>('checkPermission');
+    final hasPermission = await methodChannel.invokeMethod<bool>(
+      'checkPermission',
+    );
     return hasPermission ?? false;
   }
 
   @override
   Future<bool> requestPermission() async {
-    final hasPermission =
-        await methodChannel.invokeMethod<bool>('requestPermission');
+    final hasPermission = await methodChannel.invokeMethod<bool>(
+      'requestPermission',
+    );
     return hasPermission ?? false;
   }
 
   @override
-  Future<List<Map<String, dynamic>>?> getImages(
-      {int? limit, int? offset, String? albumId}) async {
+  Future<List<Map<String, dynamic>>?> getImages({
+    int? limit,
+    int? offset,
+    String? albumId,
+  }) async {
     final result = await methodChannel.invokeMethod<List<dynamic>>(
       'getImages',
       {'limit': limit, 'offset': offset, 'albumId': albumId},
@@ -54,8 +60,11 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
   }
 
   @override
-  Future<List<Map<String, dynamic>>?> getVideos(
-      {int? limit, int? offset, String? albumId}) async {
+  Future<List<Map<String, dynamic>>?> getVideos({
+    int? limit,
+    int? offset,
+    String? albumId,
+  }) async {
     final result = await methodChannel.invokeMethod<List<dynamic>>(
       'getVideos',
       {'limit': limit, 'offset': offset, 'albumId': albumId},
@@ -83,8 +92,11 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
   }
 
   @override
-  Future<List<Map<String, dynamic>>?> getAllMedia(
-      {int? limit, int? offset, String? albumId}) async {
+  Future<List<Map<String, dynamic>>?> getAllMedia({
+    int? limit,
+    int? offset,
+    String? albumId,
+  }) async {
     final result = await methodChannel.invokeMethod<List<dynamic>>(
       'getAllMedia',
       {'limit': limit, 'offset': offset, 'albumId': albumId},
@@ -98,7 +110,7 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
       final mediaData = {
         'id': map['id']?.toString() ?? '',
         'name': map['name']?.toString() ?? '',
-        'path': map['path']?.toString() ?? '',
+        'uri': map['path']?.toString() ?? '',
         'dateAdded': _parseInt(map['dateAdded']),
         'size': _parseInt(map['size']),
         'width': _parseInt(map['width']),
@@ -135,8 +147,11 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
   }
 
   @override
-  Future<List<Map<String, dynamic>>?> getMediaFromAlbum(
-      {required String albumId, int? limit, int? offset}) async {
+  Future<List<Map<String, dynamic>>?> getMediaFromAlbum({
+    required String albumId,
+    int? limit,
+    int? offset,
+  }) async {
     final result = await methodChannel.invokeMethod<List<dynamic>>(
       'getMediaFromAlbum',
       {'albumId': albumId, 'limit': limit, 'offset': offset},
@@ -150,7 +165,7 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
       final mediaData = {
         'id': map['id']?.toString() ?? '',
         'name': map['name']?.toString() ?? '',
-        'path': map['path']?.toString() ?? '',
+        'uri': map['path']?.toString() ?? '',
         'dateAdded': _parseInt(map['dateAdded']),
         'size': _parseInt(map['size']),
         'width': _parseInt(map['width']),
@@ -170,10 +185,10 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
 
   @override
   Future<Uint8List?> getFileBytes(String uri) async {
-    final result =
-        await methodChannel.invokeMethod<Uint8List>('readFileByUri', {
-      'uri': uri,
-    });
+    final result = await methodChannel.invokeMethod<Uint8List>(
+      'readFileByUri',
+      {'uri': uri},
+    );
     return result;
   }
 
