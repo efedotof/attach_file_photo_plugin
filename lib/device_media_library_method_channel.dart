@@ -110,7 +110,7 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
       final mediaData = {
         'id': map['id']?.toString() ?? '',
         'name': map['name']?.toString() ?? '',
-        'uri': map['path']?.toString() ?? '',
+        'uri': map['uri']?.toString() ?? '',
         'dateAdded': _parseInt(map['dateAdded']),
         'size': _parseInt(map['size']),
         'width': _parseInt(map['width']),
@@ -165,7 +165,7 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
       final mediaData = {
         'id': map['id']?.toString() ?? '',
         'name': map['name']?.toString() ?? '',
-        'uri': map['path']?.toString() ?? '',
+        'uri': map['uri']?.toString() ?? '',
         'dateAdded': _parseInt(map['dateAdded']),
         'size': _parseInt(map['size']),
         'width': _parseInt(map['width']),
