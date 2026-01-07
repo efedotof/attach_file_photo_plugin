@@ -26,8 +26,8 @@ class VideoPlayerManager(
                     sendEvent(
                         mapOf(
                             "event" to "onPlaybackUpdate",
-                            "position" to player.currentPosition / 1000.0,
-                            "duration" to player.duration / 1000.0,
+                            "position" to (player.currentPosition / 1000.0),
+                            "duration" to (player.duration / 1000.0),
                             "isPlaying" to true
                         )
                     )
@@ -70,7 +70,7 @@ class VideoPlayerManager(
                     sendEvent(
                         mapOf(
                             "event" to "onBufferingUpdate",
-                            "isBuffering" to percent < 100
+                            "isBuffering" to (percent < 100)
                         )
                     )
                 }
@@ -101,7 +101,7 @@ class VideoPlayerManager(
                 sendEvent(
                     mapOf(
                         "event" to "onError",
-                        "message" to e.message ?: "Unknown error"
+                        "message" to (e.message ?: "Unknown error")
                     )
                 )
             }
@@ -136,7 +136,8 @@ class VideoPlayerManager(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             mediaPlayer?.let { player ->
                 val params = player.playbackParams ?: PlaybackParams()
-                player.playbackParams = params.setSpeed(speed)
+                val newParams = params.setSpeed(speed)
+                player.playbackParams = newParams
             }
         }
     }
