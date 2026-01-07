@@ -66,7 +66,7 @@ class VideoPlayerManager(
                     handler.post(updateRunnable)
                 }
 
-                setOnBufferingUpdateListener { mp, percent ->
+                setOnBufferingUpdateListener { _, percent ->
                     sendEvent(
                         mapOf(
                             "event" to "onBufferingUpdate",
@@ -80,7 +80,7 @@ class VideoPlayerManager(
                     handler.removeCallbacks(updateRunnable)
                 }
 
-                setOnErrorListener { mp, what, extra ->
+                setOnErrorListener { _, what, extra ->
                     sendEvent(
                         mapOf(
                             "event" to "onError",

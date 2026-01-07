@@ -57,7 +57,7 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
         
         binding.platformViewRegistry.registerViewFactory(
             "device_media_library/video/view",
-            VideoPlayerViewFactory(),
+            VideoPlayerViewFactory()
             
         )
     }
