@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
@@ -29,15 +30,18 @@ abstract class DeviceMediaLibraryPlatform extends PlatformInterface {
     throw UnimplementedError('requestPermission() has not been implemented.');
   }
 
-  Future<List<Map<String, dynamic>>?> getImages({int? limit, int? offset, String? albumId}) {
+  Future<List<Map<String, dynamic>>?> getImages(
+      {int? limit, int? offset, String? albumId}) {
     throw UnimplementedError('getImages() has not been implemented.');
   }
 
-  Future<List<Map<String, dynamic>>?> getVideos({int? limit, int? offset, String? albumId}) {
+  Future<List<Map<String, dynamic>>?> getVideos(
+      {int? limit, int? offset, String? albumId}) {
     throw UnimplementedError('getVideos() has not been implemented.');
   }
 
-  Future<List<Map<String, dynamic>>?> getAllMedia({int? limit, int? offset, String? albumId}) {
+  Future<List<Map<String, dynamic>>?> getAllMedia(
+      {int? limit, int? offset, String? albumId}) {
     throw UnimplementedError('getAllMedia() has not been implemented.');
   }
 
@@ -45,7 +49,8 @@ abstract class DeviceMediaLibraryPlatform extends PlatformInterface {
     throw UnimplementedError('getAlbums() has not been implemented.');
   }
 
-  Future<List<Map<String, dynamic>>?> getMediaFromAlbum({required String albumId, int? limit, int? offset}) {
+  Future<List<Map<String, dynamic>>?> getMediaFromAlbum(
+      {required String albumId, int? limit, int? offset}) {
     throw UnimplementedError('getMediaFromAlbum() has not been implemented.');
   }
 
@@ -60,5 +65,47 @@ abstract class DeviceMediaLibraryPlatform extends PlatformInterface {
     required int height,
   }) {
     throw UnimplementedError('getThumbnail() has not been implemented.');
+  }
+
+  Future<bool> initializeVideo({
+    required String videoPath,
+    String? videoUri,
+    bool autoPlay = false,
+    double volume = 1.0,
+  }) {
+    throw UnimplementedError('initializeVideo() has not been implemented.');
+  }
+
+  Future<void> playVideo() {
+    throw UnimplementedError('playVideo() has not been implemented.');
+  }
+
+  Future<void> pauseVideo() {
+    throw UnimplementedError('pauseVideo() has not been implemented.');
+  }
+
+  Future<void> seekVideoTo(double position) {
+    throw UnimplementedError('seekVideoTo() has not been implemented.');
+  }
+
+  Future<void> setVideoVolume(double volume) {
+    throw UnimplementedError('setVideoVolume() has not been implemented.');
+  }
+
+  Future<void> setVideoPlaybackSpeed(double speed) {
+    throw UnimplementedError(
+        'setVideoPlaybackSpeed() has not been implemented.');
+  }
+
+  Future<double?> getVideoDuration() {
+    throw UnimplementedError('getVideoDuration() has not been implemented.');
+  }
+
+  Future<void> disposeVideo() {
+    throw UnimplementedError('disposeVideo() has not been implemented.');
+  }
+
+  Stream<Map<String, dynamic>> get videoEvents {
+    throw UnimplementedError('videoEvents getter has not been implemented.');
   }
 }

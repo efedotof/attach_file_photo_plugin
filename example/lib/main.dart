@@ -4,8 +4,6 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:device_media_library/device_media_library.dart';
 
-
-
 void main() {
   runApp(MyApp());
 }
@@ -314,10 +312,10 @@ class _MyAppState extends State<MyApp> {
     final mediaType = _getString(media, 'type');
     final filePath = _getString(media, 'filePath');
     final uri = _getString(media, 'uri');
-    
+
     // Пробуем получить путь из разных возможных полей
     String path = filePath.isNotEmpty ? filePath : uri;
-    
+
     if (path.isEmpty) {
       path = _getString(media, 'path');
     }
@@ -327,7 +325,7 @@ class _MyAppState extends State<MyApp> {
     debugPrint('Media Type: $mediaType');
     debugPrint('File Path: $path');
     debugPrint('========================');
-    
+
     // Также выводим в консоль для удобства копирования
     print('FILE_PATH: $path');
   }
@@ -562,9 +560,8 @@ class _MyAppState extends State<MyApp> {
                                             ),
                                             decoration: BoxDecoration(
                                               color: Colors.black54,
-                                              borderRadius: BorderRadius.circular(
-                                                4,
-                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
                                             ),
                                             child: Row(
                                               mainAxisSize: MainAxisSize.min,

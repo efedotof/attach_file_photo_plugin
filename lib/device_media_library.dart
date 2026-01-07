@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'device_media_library_platform_interface.dart';
 
@@ -70,5 +71,53 @@ class DeviceMediaLibrary {
       width: width,
       height: height,
     );
+  }
+
+  // Новые методы для видео-плеера
+
+  Future<bool> initializeVideo({
+    required String videoPath,
+    String? videoUri,
+    bool autoPlay = false,
+    double volume = 1.0,
+  }) {
+    return DeviceMediaLibraryPlatform.instance.initializeVideo(
+      videoPath: videoPath,
+      videoUri: videoUri,
+      autoPlay: autoPlay,
+      volume: volume,
+    );
+  }
+
+  Future<void> playVideo() {
+    return DeviceMediaLibraryPlatform.instance.playVideo();
+  }
+
+  Future<void> pauseVideo() {
+    return DeviceMediaLibraryPlatform.instance.pauseVideo();
+  }
+
+  Future<void> seekVideoTo(double position) {
+    return DeviceMediaLibraryPlatform.instance.seekVideoTo(position);
+  }
+
+  Future<void> setVideoVolume(double volume) {
+    return DeviceMediaLibraryPlatform.instance.setVideoVolume(volume);
+  }
+
+  Future<void> setVideoPlaybackSpeed(double speed) {
+    return DeviceMediaLibraryPlatform.instance.setVideoPlaybackSpeed(speed);
+  }
+
+  Future<double?> getVideoDuration() {
+    return DeviceMediaLibraryPlatform.instance.getVideoDuration();
+  }
+
+  Future<void> disposeVideo() {
+    return DeviceMediaLibraryPlatform.instance.disposeVideo();
+  }
+
+  Stream<Map<String, dynamic>> get videoEvents {
+    return DeviceMediaLibraryPlatform.instance.videoEvents;
   }
 }
