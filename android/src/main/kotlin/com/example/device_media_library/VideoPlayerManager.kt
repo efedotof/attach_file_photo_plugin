@@ -2,6 +2,7 @@ package com.example.device_media_library
 
 import android.content.Context
 import android.media.MediaPlayer
+import android.media.PlaybackParams
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -65,7 +66,7 @@ class VideoPlayerManager(
                     handler.post(updateRunnable)
                 }
 
-                setOnBufferingUpdateListener { _, percent ->
+                setOnBufferingUpdateListener { mp, percent ->
                     sendEvent(
                         mapOf(
                             "event" to "onBufferingUpdate",
@@ -79,7 +80,7 @@ class VideoPlayerManager(
                     handler.removeCallbacks(updateRunnable)
                 }
 
-                setOnErrorListener { _, what, extra ->
+                setOnErrorListener { mp, what, extra ->
                     sendEvent(
                         mapOf(
                             "event" to "onError",
@@ -133,7 +134,10 @@ class VideoPlayerManager(
 
     fun setPlaybackSpeed(speed: Float) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            mediaPlayer?.playbackParams = mediaPlayer?.playbackParams?.setSpeed(speed)
+            mediaPlayer?.let { player ->
+                val params = player.playbackParams ?: PlaybackParams()
+                player.playbackParams = params.setSpeed(speed)
+            }
         }
     }
 
