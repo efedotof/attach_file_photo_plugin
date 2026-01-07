@@ -80,7 +80,7 @@ class VideoPlayerManager(
                     handler.removeCallbacks(updateRunnable)
                 }
 
-                setOnErrorListener { _, what, extra ->
+                setOnErrorListener { mp, what, extra ->
                     sendEvent(
                         mapOf(
                             "event" to "onError",

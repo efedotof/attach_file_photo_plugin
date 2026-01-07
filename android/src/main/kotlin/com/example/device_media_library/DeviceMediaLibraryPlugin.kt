@@ -10,7 +10,6 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.Result
-import io.flutter.plugin.common.StandardMessageCodec
 import java.util.concurrent.Executors
 
 class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
@@ -58,7 +57,6 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
         binding.platformViewRegistry.registerViewFactory(
             "device_media_library/video/view",
             VideoPlayerViewFactory()
-            
         )
     }
 
