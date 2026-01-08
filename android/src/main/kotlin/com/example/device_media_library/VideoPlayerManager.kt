@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -22,6 +23,7 @@ class VideoPlayerManager(
         fun onBufferingUpdate(isBuffering: Boolean)
         fun onCompleted()
         fun onError(message: String)
+        fun onVideoSizeChanged(width: Int, height: Int)
     }
 
     private var mediaPlayer: MediaPlayer? = null
@@ -36,15 +38,19 @@ class VideoPlayerManager(
                     try {
                         if (player.isPlaying) {
                             val currentPos = player.currentPosition
-                            eventCallback.onPlaybackUpdate(currentPos / 1000.0, true)
+                            val duration = player.duration
+                            eventCallback.onPlaybackUpdate(
+                                currentPos / 1000.0, 
+                                true
+                            )
                         }
                     } catch (e: IllegalStateException) {
-                        // Игнорируем ошибки при обновлении позиции
+                       
                     }
                 }
             }
             if (!isReleased.get()) {
-                handler.postDelayed(this, 500)
+                handler.postDelayed(this, 200)
             }
         }
     }
@@ -58,11 +64,11 @@ class VideoPlayerManager(
         
         try {
             mediaPlayer = MediaPlayer().apply {
-                // Устанавливаем источник видео
                 when {
                     !videoPath.isNullOrEmpty() -> {
                         val file = File(videoPath)
                         if (file.exists()) {
+                            Log.d("VideoPlayerManager", "Setting data source from file: $videoPath")
                             setDataSource(file.absolutePath)
                         } else {
                             throw IllegalArgumentException("File does not exist: $videoPath")
@@ -70,40 +76,60 @@ class VideoPlayerManager(
                     }
                     !videoUri.isNullOrEmpty() -> {
                         val uri = Uri.parse(videoUri)
+                        Log.d("VideoPlayerManager", "Setting data source from URI: $videoUri")
                         setDataSource(context, uri)
                     }
                     else -> throw IllegalArgumentException("No video source provided")
                 }
 
-                // Настройка слушателей
                 setOnPreparedListener {
+                    Log.d("VideoPlayerManager", "MediaPlayer prepared, duration: ${it.duration}")
                     isPrepared.set(true)
                     eventCallback.onPrepared(it.duration / 1000.0)
                     eventCallback.onBufferingUpdate(false)
                     
-                    // Запускаем обновление позиции
+                    
                     handler.post(positionUpdateRunnable)
                 }
 
                 setOnBufferingUpdateListener { _, percent ->
+                    Log.d("VideoPlayerManager", "Buffering: $percent%")
                     eventCallback.onBufferingUpdate(percent < 100)
                 }
 
                 setOnCompletionListener {
+                    Log.d("VideoPlayerManager", "Playback completed")
                     eventCallback.onCompleted()
                 }
 
                 setOnErrorListener { _, what, extra ->
-                    val errorMsg = "MediaPlayer error: $what, $extra"
+                    val errorMsg = "MediaPlayer error: what=$what, extra=$extra"
+                    Log.e("VideoPlayerManager", errorMsg)
                     eventCallback.onError(errorMsg)
                     true
                 }
 
-                // Подготавливаем асинхронно
+                setOnInfoListener { _, what, extra ->
+                    Log.d("VideoPlayerManager", "MediaPlayer info: what=$what, extra=$extra")
+                    true
+                }
+
+                setOnVideoSizeChangedListener { _, width, height ->
+                    Log.d("VideoPlayerManager", "Video size changed: ${width}x$height")
+                    eventCallback.onVideoSizeChanged(width, height)
+                }
+
+             
+                setScreenOnWhilePlaying(true)
+                setWakeMode(context, android.os.PowerManager.PARTIAL_WAKE_LOCK)
+
+               
+                Log.d("VideoPlayerManager", "Starting async preparation")
                 prepareAsync()
                 eventCallback.onBufferingUpdate(true)
             }
         } catch (e: Exception) {
+            Log.e("VideoPlayerManager", "Initialization error: ${e.message}", e)
             eventCallback.onError("Initialization error: ${e.message}")
             release()
         }
@@ -111,7 +137,14 @@ class VideoPlayerManager(
 
     fun setDisplay(holder: android.view.SurfaceHolder?) {
         if (!isReleased.get()) {
-            mediaPlayer?.setDisplay(holder)
+            try {
+                mediaPlayer?.setDisplay(holder)
+                if (holder != null) {
+                    Log.d("VideoPlayerManager", "SurfaceHolder set successfully")
+                }
+            } catch (e: Exception) {
+                Log.e("VideoPlayerManager", "Error setting display: ${e.message}")
+            }
         }
     }
 
@@ -119,10 +152,14 @@ class VideoPlayerManager(
         if (isPrepared.get() && !isReleased.get()) {
             try {
                 mediaPlayer?.start()
+                Log.d("VideoPlayerManager", "Play called")
                 eventCallback.onBufferingUpdate(false)
             } catch (e: IllegalStateException) {
+                Log.e("VideoPlayerManager", "Cannot play: ${e.message}")
                 eventCallback.onError("Cannot play: ${e.message}")
             }
+        } else {
+            Log.w("VideoPlayerManager", "Cannot play: not prepared or released")
         }
     }
 
@@ -130,8 +167,9 @@ class VideoPlayerManager(
         if (isPrepared.get() && !isReleased.get()) {
             try {
                 mediaPlayer?.pause()
+                Log.d("VideoPlayerManager", "Pause called")
             } catch (e: IllegalStateException) {
-                // Игнорируем
+                Log.e("VideoPlayerManager", "Cannot pause: ${e.message}")
             }
         }
     }
@@ -141,9 +179,13 @@ class VideoPlayerManager(
             try {
                 val posMillis = (position * 1000).toInt()
                 mediaPlayer?.seekTo(posMillis)
+                Log.d("VideoPlayerManager", "Seek to: $posMillis ms")
             } catch (e: IllegalStateException) {
+                Log.e("VideoPlayerManager", "Cannot seek: ${e.message}")
                 eventCallback.onError("Cannot seek: ${e.message}")
             }
+        } else {
+            Log.w("VideoPlayerManager", "Cannot seek: not prepared or released")
         }
     }
 
@@ -187,8 +229,9 @@ class VideoPlayerManager(
         if (!isReleased.get()) {
             try {
                 mediaPlayer?.setVolume(volume, volume)
+                Log.d("VideoPlayerManager", "Volume set to: $volume")
             } catch (e: IllegalStateException) {
-                // Игнорируем
+                Log.e("VideoPlayerManager", "Cannot set volume: ${e.message}")
             }
         }
     }
@@ -200,8 +243,9 @@ class VideoPlayerManager(
                     val params = mediaPlayer?.playbackParams ?: PlaybackParams()
                     params.speed = speed
                     mediaPlayer?.playbackParams = params
+                    Log.d("VideoPlayerManager", "Playback speed set to: $speed")
                 } catch (e: IllegalStateException) {
-                    // Игнорируем
+                    Log.e("VideoPlayerManager", "Cannot set playback speed: ${e.message}")
                 }
             }
         }
@@ -209,6 +253,8 @@ class VideoPlayerManager(
 
     fun release() {
         if (isReleased.getAndSet(true)) return
+        
+        Log.d("VideoPlayerManager", "Releasing MediaPlayer")
         
         handler.removeCallbacks(positionUpdateRunnable)
         isPrepared.set(false)
@@ -218,9 +264,29 @@ class VideoPlayerManager(
                 player.stop()
                 player.release()
             } catch (e: IllegalStateException) {
-                // Игнорируем
+                Log.e("VideoPlayerManager", "Error releasing MediaPlayer: ${e.message}")
             }
         }
         mediaPlayer = null
+    }
+
+    fun reset() {
+        if (isReleased.get()) return
+        
+        Log.d("VideoPlayerManager", "Resetting MediaPlayer")
+        
+        handler.removeCallbacks(positionUpdateRunnable)
+        isPrepared.set(false)
+        
+        mediaPlayer?.let { player ->
+            try {
+                player.reset()
+               
+                initializeMediaPlayer()
+            } catch (e: IllegalStateException) {
+                Log.e("VideoPlayerManager", "Error resetting MediaPlayer: ${e.message}")
+                release()
+            }
+        }
     }
 }

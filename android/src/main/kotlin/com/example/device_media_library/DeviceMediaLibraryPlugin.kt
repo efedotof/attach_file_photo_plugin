@@ -23,13 +23,22 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
     private lateinit var mediaQueryManager: MediaQueryManager
     private lateinit var thumbnailManager: ThumbnailManager
     private lateinit var fileReader: FileReader
-    private var videoPlayerManager: VideoPlayerManager? = null
+    var videoPlayerManager: VideoPlayerManager? = null
     
     private val executor = Executors.newFixedThreadPool(3)
     private val mainHandler = Handler(Looper.getMainLooper())
     private var videoEventSink: EventChannel.EventSink? = null
+    private var currentVideoPath: String? = null
+    private var currentVideoUri: String? = null
+
+    companion object {
+        private var instance: DeviceMediaLibraryPlugin? = null
+        
+        fun getInstance(): DeviceMediaLibraryPlugin? = instance
+    }
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        instance = this
         context = binding.applicationContext
         
         mediaChannel = MethodChannel(binding.binaryMessenger, "device_media_library")
@@ -42,10 +51,12 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
         videoEventChannel.setStreamHandler(object : EventChannel.StreamHandler {
             override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
                 videoEventSink = events
+                Log.d("DeviceMediaLibraryPlugin", "Video event channel started listening")
             }
             
             override fun onCancel(arguments: Any?) {
                 videoEventSink = null
+                Log.d("DeviceMediaLibraryPlugin", "Video event channel stopped listening")
             }
         })
         
@@ -81,6 +92,7 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
     }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        instance = null
         mediaChannel.setMethodCallHandler(null)
         videoMethodChannel.setMethodCallHandler(null)
         videoEventChannel.setStreamHandler(null)
@@ -91,7 +103,11 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
     
     private fun sendVideoEvent(event: Map<String, Any>) {
         mainHandler.post {
-            videoEventSink?.success(event)
+            try {
+                videoEventSink?.success(event)
+            } catch (e: Exception) {
+                Log.e("DeviceMediaLibraryPlugin", "Error sending video event: ${e.message}")
+            }
         }
     }
 
@@ -145,8 +161,10 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
         }
     }
     
-   inner class VideoMethodCallHandler : MethodChannel.MethodCallHandler {
+    inner class VideoMethodCallHandler : MethodChannel.MethodCallHandler {
         override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+            Log.d("VideoMethodCallHandler", "Method called: ${call.method}")
+            
             when (call.method) {
                 "initialize" -> {
                     val videoPath = call.argument<String>("videoPath")
@@ -158,6 +176,9 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                     videoPlayerManager?.release()
                     videoPlayerManager = null
 
+                    currentVideoPath = videoPath
+                    currentVideoUri = videoUri
+
                     if (videoPath != null || videoUri != null) {
                         try {
                             videoPlayerManager = VideoPlayerManager(
@@ -166,6 +187,7 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                                 videoUri,
                                 object : VideoPlayerManager.VideoEventCallback {
                                     override fun onPrepared(duration: Double) {
+                                        Log.d("VideoPlayerManager", "onPrepared: duration=$duration")
                                         sendVideoEvent(
                                             mapOf(
                                                 "event" to "onPrepared",
@@ -198,10 +220,21 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                                     }
                                     
                                     override fun onError(message: String) {
+                                        Log.e("VideoPlayerManager", "Error: $message")
                                         sendVideoEvent(
                                             mapOf(
                                                 "event" to "onError",
                                                 "message" to message
+                                            )
+                                        )
+                                    }
+                                    
+                                    override fun onVideoSizeChanged(width: Int, height: Int) {
+                                        sendVideoEvent(
+                                            mapOf(
+                                                "event" to "onVideoSizeChanged",
+                                                "width" to width,
+                                                "height" to height
                                             )
                                         )
                                     }
@@ -211,11 +244,13 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                             videoPlayerManager?.setVolume(volume)
                             
                             if (autoPlay) {
-                                videoPlayerManager?.play()
+                                Log.d("VideoMethodCallHandler", "AutoPlay enabled, will play after preparation")
+                                // Автовоспроизведение будет после подготовки
                             }
                             
                             result.success(true)
                         } catch (e: Exception) {
+                            Log.e("VideoMethodCallHandler", "Failed to initialize video: ${e.message}", e)
                             result.error("INIT_ERROR", "Failed to initialize video: ${e.message}", null)
                         }
                     } else {
@@ -284,10 +319,20 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                         result.error("VOLUME_ERROR", "Failed to set volume: ${e.message}", null)
                     }
                 }
+                "reset" -> {
+                    try {
+                        videoPlayerManager?.reset()
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("RESET_ERROR", "Failed to reset video: ${e.message}", null)
+                    }
+                }
                 "dispose" -> {
                     try {
                         videoPlayerManager?.release()
                         videoPlayerManager = null
+                        currentVideoPath = null
+                        currentVideoUri = null
                         result.success(null)
                     } catch (e: Exception) {
                         result.error("DISPOSE_ERROR", "Failed to dispose: ${e.message}", null)

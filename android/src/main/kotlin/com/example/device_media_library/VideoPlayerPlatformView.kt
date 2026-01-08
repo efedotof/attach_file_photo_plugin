@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.widget.FrameLayout
+import android.widget.ProgressBar
 import io.flutter.plugin.platform.PlatformView
 
 class VideoPlayerPlatformView(
@@ -14,7 +15,8 @@ class VideoPlayerPlatformView(
 ) : PlatformView, SurfaceHolder.Callback {
     private val surfaceView: SurfaceView
     private val container: FrameLayout
-    private var videoPlayerManager: VideoPlayerManager? = null
+    private var progressBar: ProgressBar
+    private var isSurfaceReady = false
 
     init {
         container = FrameLayout(context).apply {
@@ -27,69 +29,69 @@ class VideoPlayerPlatformView(
 
         surfaceView = SurfaceView(context).apply {
             holder.addCallback(this@VideoPlayerPlatformView)
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+
+        progressBar = ProgressBar(context).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                this.gravity = android.view.Gravity.CENTER
+            }
+            isIndeterminate = true
         }
 
         container.addView(surfaceView)
-        
-      
-        initializeVideoPlayer()
-    }
-
-    private fun initializeVideoPlayer() {
-        val argsMap = args as? Map<*, *> ?: return
-        
-        val videoPath = argsMap["videoPath"] as? String
-        val videoUri = argsMap["videoUri"] as? String
-        val autoPlay = argsMap["autoPlay"] as? Boolean ?: false
-        val volume = (argsMap["volume"] as? Double)?.toFloat() ?: 1.0f
-
-        videoPlayerManager = VideoPlayerManager(
-            context,
-            videoPath,
-            videoUri,
-            object : VideoPlayerManager.VideoEventCallback {
-                override fun onPlaybackUpdate(position: Double, duration: Double, isPlaying: Boolean) {
-                   
-                }
-                
-                override fun onBufferingUpdate(isBuffering: Boolean) {
-                   
-                }
-                
-                override fun onCompleted() {
-                 
-                }
-                
-                override fun onError(message: String) {
-                    
-                }
-            }
-        )
-        
-       
-        videoPlayerManager?.setDisplay(surfaceView.holder)
-        
-        if (autoPlay) {
-            videoPlayerManager?.play()
-        }
+        container.addView(progressBar)
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
-        videoPlayerManager?.setDisplay(holder)
+        Log.d("VideoPlayerPlatformView", "Surface created for view $viewId")
+        isSurfaceReady = true
+        
+
+        progressBar.visibility = android.view.View.GONE
+        
+       
+        val plugin = DeviceMediaLibraryPlugin.getInstance()
+        plugin?.videoPlayerManager?.setDisplay(holder)
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        
+        Log.d("VideoPlayerPlatformView", "Surface changed: ${width}x$height")
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
-        videoPlayerManager?.setDisplay(null)
+        Log.d("VideoPlayerPlatformView", "Surface destroyed for view $viewId")
+        isSurfaceReady = false
+        
+   
+        progressBar.visibility = android.view.View.VISIBLE
+        
+        
+        val plugin = DeviceMediaLibraryPlugin.getInstance()
+        plugin?.videoPlayerManager?.setDisplay(null)
     }
 
     override fun getView(): android.view.View = container
 
     override fun dispose() {
-        videoPlayerManager?.release()
+        Log.d("VideoPlayerPlatformView", "Disposing view $viewId")
+        surfaceView.holder.removeCallback(this)
         container.removeAllViews()
     }
+
+    fun showLoading() {
+        progressBar.visibility = android.view.View.VISIBLE
+    }
+
+    fun hideLoading() {
+        progressBar.visibility = android.view.View.GONE
+    }
+
+    fun isSurfaceReady(): Boolean = isSurfaceReady
 }

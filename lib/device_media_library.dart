@@ -111,19 +111,23 @@ class DeviceMediaLibrary {
     return DeviceMediaLibraryPlatform.instance.getVideoDuration();
   }
 
-  Future<void> disposeVideo() {
-    return DeviceMediaLibraryPlatform.instance.disposeVideo();
-  }
-
-  Stream<Map<String, dynamic>> get videoEvents {
-    return DeviceMediaLibraryPlatform.instance.videoEvents;
-  }
-
   Future<double?> getCurrentPosition() {
     return DeviceMediaLibraryPlatform.instance.getCurrentPosition();
   }
 
   Future<bool?> isVideoPlaying() {
     return DeviceMediaLibraryPlatform.instance.isVideoPlaying();
+  }
+
+  Future<void> resetVideo() {
+    return DeviceMediaLibraryPlatform.instance.resetVideo();
+  }
+
+  Future<void> disposeVideo() {
+    return DeviceMediaLibraryPlatform.instance.disposeVideo();
+  }
+
+  Stream<Map<String, dynamic>> get videoEvents {
+    return DeviceMediaLibraryPlatform.instance.videoEvents;
   }
 }

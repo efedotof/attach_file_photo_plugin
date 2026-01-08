@@ -1,4 +1,6 @@
 import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'device_media_library_platform_interface.dart';
 
@@ -221,6 +223,9 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
     bool autoPlay = false,
     double volume = 1.0,
   }) async {
+    if (kDebugMode) {
+      debugPrint('Initializing video with path: $videoPath, uri: $videoUri');
+    }
     final result = await videoMethodChannel.invokeMethod<bool>(
       'initialize',
       {
@@ -230,21 +235,33 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
         'volume': volume,
       },
     );
+    if (kDebugMode) {
+      debugPrint('Video initialization result: $result');
+    }
     return result ?? false;
   }
 
   @override
   Future<void> playVideo() async {
+    if (kDebugMode) {
+      debugPrint('Playing video');
+    }
     await videoMethodChannel.invokeMethod('play');
   }
 
   @override
   Future<void> pauseVideo() async {
+    if (kDebugMode) {
+      debugPrint('Pausing video');
+    }
     await videoMethodChannel.invokeMethod('pause');
   }
 
   @override
   Future<void> seekVideoTo(double position) async {
+    if (kDebugMode) {
+      debugPrint('Seeking video to: $position');
+    }
     await videoMethodChannel.invokeMethod('seekTo', {'position': position});
   }
 
@@ -260,18 +277,60 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
 
   @override
   Future<double?> getVideoDuration() async {
-    return await videoMethodChannel.invokeMethod<double>('getDuration');
+    final duration =
+        await videoMethodChannel.invokeMethod<double>('getDuration');
+    if (kDebugMode) {
+      debugPrint('Got video duration: $duration');
+    }
+    return duration;
+  }
+
+  @override
+  Future<double?> getCurrentPosition() async {
+    final position =
+        await videoMethodChannel.invokeMethod<double>('getCurrentPosition');
+    if (kDebugMode) {
+      debugPrint('Got video position: $position');
+    }
+    return position;
+  }
+
+  @override
+  Future<bool?> isVideoPlaying() async {
+    final isPlaying = await videoMethodChannel.invokeMethod<bool>('isPlaying');
+    if (kDebugMode) {
+      debugPrint('Got video playing status: $isPlaying');
+    }
+    return isPlaying;
+  }
+
+  @override
+  Future<void> resetVideo() async {
+    if (kDebugMode) {
+      debugPrint('Resetting video');
+    }
+    await videoMethodChannel.invokeMethod('reset');
   }
 
   @override
   Future<void> disposeVideo() async {
+    if (kDebugMode) {
+      debugPrint('Disposing video');
+    }
     await videoMethodChannel.invokeMethod('dispose');
   }
 
   @override
   Stream<Map<String, dynamic>> get videoEvents {
-    _videoEventsStream ??= videoEventChannel.receiveBroadcastStream().map(
-        (event) => Map<String, dynamic>.from(event as Map<dynamic, dynamic>));
+    _videoEventsStream ??= videoEventChannel
+        .receiveBroadcastStream()
+        .map((event) =>
+            Map<String, dynamic>.from(event as Map<dynamic, dynamic>))
+        .handleError((error) {
+      if (kDebugMode) {
+        debugPrint('Video event error: $error');
+      }
+    });
     return _videoEventsStream!;
   }
 
@@ -281,15 +340,5 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
     if (value is double) return value.toInt();
     if (value is String) return int.tryParse(value) ?? 0;
     return 0;
-  }
-
-  @override
-  Future<double?> getCurrentPosition() async {
-    return await videoMethodChannel.invokeMethod<double>('getCurrentPosition');
-  }
-
-  @override
-  Future<bool?> isVideoPlaying() async {
-    return await videoMethodChannel.invokeMethod<bool>('isPlaying');
   }
 }

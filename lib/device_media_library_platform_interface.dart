@@ -109,6 +109,15 @@ abstract class DeviceMediaLibraryPlatform extends PlatformInterface {
     throw UnimplementedError('videoEvents getter has not been implemented.');
   }
 
-  Future<double?> getCurrentPosition();
-  Future<bool?> isVideoPlaying();
+  Future<double?> getCurrentPosition() {
+    throw UnimplementedError('getCurrentPosition() has not been implemented.');
+  }
+
+  Future<bool?> isVideoPlaying() {
+    throw UnimplementedError('isVideoPlaying() has not been implemented.');
+  }
+
+  Future<void> resetVideo() {
+    throw UnimplementedError('resetVideo() has not been implemented.');
+  }
 }
