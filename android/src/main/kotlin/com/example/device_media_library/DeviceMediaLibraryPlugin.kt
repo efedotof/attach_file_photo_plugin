@@ -145,7 +145,7 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
         }
     }
     
-    inner class VideoMethodCallHandler : MethodChannel.MethodCallHandler {
+   inner class VideoMethodCallHandler : MethodChannel.MethodCallHandler {
         override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
             when (call.method) {
                 "initialize" -> {
@@ -154,6 +154,7 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                     val autoPlay = call.argument<Boolean>("autoPlay") ?: false
                     val volume = call.argument<Double>("volume")?.toFloat() ?: 1.0f
 
+                    // Освобождаем предыдущий плеер
                     videoPlayerManager?.release()
                     videoPlayerManager = null
 
@@ -164,16 +165,20 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                                 videoPath,
                                 videoUri,
                                 object : VideoPlayerManager.VideoEventCallback {
-                                    override fun onPlaybackUpdate(
-                                        position: Double,
-                                        duration: Double,
-                                        isPlaying: Boolean
-                                    ) {
+                                    override fun onPrepared(duration: Double) {
+                                        sendVideoEvent(
+                                            mapOf(
+                                                "event" to "onPrepared",
+                                                "duration" to duration
+                                            )
+                                        )
+                                    }
+                                    
+                                    override fun onPlaybackUpdate(position: Double, isPlaying: Boolean) {
                                         sendVideoEvent(
                                             mapOf(
                                                 "event" to "onPlaybackUpdate",
                                                 "position" to position,
-                                                "duration" to duration,
                                                 "isPlaying" to isPlaying
                                             )
                                         )
@@ -244,6 +249,30 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                         result.error("SEEK_ERROR", "Failed to seek: ${e.message}", null)
                     }
                 }
+                "getDuration" -> {
+                    try {
+                        val duration = videoPlayerManager?.getDuration()
+                        result.success(duration)
+                    } catch (e: Exception) {
+                        result.error("DURATION_ERROR", "Failed to get duration: ${e.message}", 0.0)
+                    }
+                }
+                "getCurrentPosition" -> {
+                    try {
+                        val position = videoPlayerManager?.getCurrentPosition()
+                        result.success(position)
+                    } catch (e: Exception) {
+                        result.error("POSITION_ERROR", "Failed to get position: ${e.message}", 0.0)
+                    }
+                }
+                "isPlaying" -> {
+                    try {
+                        val isPlaying = videoPlayerManager?.isPlaying()
+                        result.success(isPlaying)
+                    } catch (e: Exception) {
+                        result.error("STATUS_ERROR", "Failed to get playback status: ${e.message}", false)
+                    }
+                }
                 "setVolume" -> {
                     try {
                         val volume = call.argument<Double>("volume")?.toFloat()
@@ -253,25 +282,6 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                         result.success(null)
                     } catch (e: Exception) {
                         result.error("VOLUME_ERROR", "Failed to set volume: ${e.message}", null)
-                    }
-                }
-                "setPlaybackSpeed" -> {
-                    try {
-                        val speed = call.argument<Double>("speed")?.toFloat()
-                        if (speed != null) {
-                            videoPlayerManager?.setPlaybackSpeed(speed)
-                        }
-                        result.success(null)
-                    } catch (e: Exception) {
-                        result.error("SPEED_ERROR", "Failed to set playback speed: ${e.message}", null)
-                    }
-                }
-                "getDuration" -> {
-                    try {
-                        val duration = videoPlayerManager?.getDuration()?.toDouble()
-                        result.success(duration)
-                    } catch (e: Exception) {
-                        result.error("DURATION_ERROR", "Failed to get duration: ${e.message}", 0.0)
                     }
                 }
                 "dispose" -> {

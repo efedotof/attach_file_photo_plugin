@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 
 class VideoPlayerManager(
     private val context: Context,
@@ -16,35 +17,34 @@ class VideoPlayerManager(
     private val eventCallback: VideoEventCallback
 ) {
     interface VideoEventCallback {
-        fun onPlaybackUpdate(position: Double, duration: Double, isPlaying: Boolean)
+        fun onPrepared(duration: Double)
+        fun onPlaybackUpdate(position: Double, isPlaying: Boolean)
         fun onBufferingUpdate(isBuffering: Boolean)
         fun onCompleted()
         fun onError(message: String)
     }
 
     private var mediaPlayer: MediaPlayer? = null
-    private var isPrepared = false
-    private var isReleased = false
+    private val isPrepared = AtomicBoolean(false)
+    private val isReleased = AtomicBoolean(false)
     private val handler = Handler(Looper.getMainLooper())
     
     private val positionUpdateRunnable = object : Runnable {
         override fun run() {
-            if (mediaPlayer != null && isPrepared && mediaPlayer!!.isPlaying) {
-                try {
-                    val currentPos = mediaPlayer!!.currentPosition
-                    val duration = mediaPlayer!!.duration
-                    
-                    eventCallback.onPlaybackUpdate(
-                        currentPos / 1000.0,
-                        duration / 1000.0,
-                        true
-                    )
-                } catch (e: IllegalStateException) {
-                   
+            if (isPrepared.get() && !isReleased.get()) {
+                mediaPlayer?.let { player ->
+                    try {
+                        if (player.isPlaying) {
+                            val currentPos = player.currentPosition
+                            eventCallback.onPlaybackUpdate(currentPos / 1000.0, true)
+                        }
+                    } catch (e: IllegalStateException) {
+                        // Игнорируем ошибки при обновлении позиции
+                    }
                 }
             }
-            if (!isReleased) {
-                handler.postDelayed(this, 1000)
+            if (!isReleased.get()) {
+                handler.postDelayed(this, 500)
             }
         }
     }
@@ -54,59 +54,55 @@ class VideoPlayerManager(
     }
 
     private fun initializeMediaPlayer() {
-        if (isReleased) return
-        
-        mediaPlayer = MediaPlayer()
+        if (isReleased.get()) return
         
         try {
-            when {
-                !videoPath.isNullOrEmpty() -> {
-                    val file = File(videoPath)
-                    if (file.exists()) {
-                        mediaPlayer!!.setDataSource(file.absolutePath)
-                    } else {
-                        throw IllegalArgumentException("File does not exist: $videoPath")
+            mediaPlayer = MediaPlayer().apply {
+                // Устанавливаем источник видео
+                when {
+                    !videoPath.isNullOrEmpty() -> {
+                        val file = File(videoPath)
+                        if (file.exists()) {
+                            setDataSource(file.absolutePath)
+                        } else {
+                            throw IllegalArgumentException("File does not exist: $videoPath")
+                        }
                     }
+                    !videoUri.isNullOrEmpty() -> {
+                        val uri = Uri.parse(videoUri)
+                        setDataSource(context, uri)
+                    }
+                    else -> throw IllegalArgumentException("No video source provided")
                 }
-                !videoUri.isNullOrEmpty() -> {
-                    mediaPlayer!!.setDataSource(context, Uri.parse(videoUri))
+
+                // Настройка слушателей
+                setOnPreparedListener {
+                    isPrepared.set(true)
+                    eventCallback.onPrepared(it.duration / 1000.0)
+                    eventCallback.onBufferingUpdate(false)
+                    
+                    // Запускаем обновление позиции
+                    handler.post(positionUpdateRunnable)
                 }
-                else -> throw IllegalArgumentException("No video source provided")
-            }
 
-          
-            mediaPlayer!!.setOnPreparedListener {
-                isPrepared = true
-                eventCallback.onBufferingUpdate(false)
-                
-           
-                handler.post(positionUpdateRunnable)
-                
-               
-                val duration = it.duration
-                eventCallback.onPlaybackUpdate(0.0, duration / 1000.0, false)
-            }
+                setOnBufferingUpdateListener { _, percent ->
+                    eventCallback.onBufferingUpdate(percent < 100)
+                }
 
-            mediaPlayer!!.setOnBufferingUpdateListener { _, percent ->
-                eventCallback.onBufferingUpdate(percent < 100)
-            }
+                setOnCompletionListener {
+                    eventCallback.onCompleted()
+                }
 
-            mediaPlayer!!.setOnCompletionListener {
-                eventCallback.onCompleted()
-                handler.removeCallbacks(positionUpdateRunnable)
-            }
+                setOnErrorListener { _, what, extra ->
+                    val errorMsg = "MediaPlayer error: $what, $extra"
+                    eventCallback.onError(errorMsg)
+                    true
+                }
 
-            mediaPlayer!!.setOnErrorListener { _, what, extra ->
-                val errorMsg = "MediaPlayer error: $what, $extra"
-                eventCallback.onError(errorMsg)
-                handler.removeCallbacks(positionUpdateRunnable)
-                true
+                // Подготавливаем асинхронно
+                prepareAsync()
+                eventCallback.onBufferingUpdate(true)
             }
-
-           
-            mediaPlayer!!.prepareAsync()
-            eventCallback.onBufferingUpdate(true)
-            
         } catch (e: Exception) {
             eventCallback.onError("Initialization error: ${e.message}")
             release()
@@ -114,15 +110,16 @@ class VideoPlayerManager(
     }
 
     fun setDisplay(holder: android.view.SurfaceHolder?) {
-        if (mediaPlayer != null && !isReleased) {
-            mediaPlayer!!.setDisplay(holder)
+        if (!isReleased.get()) {
+            mediaPlayer?.setDisplay(holder)
         }
     }
 
     fun play() {
-        if (mediaPlayer != null && isPrepared && !isReleased) {
+        if (isPrepared.get() && !isReleased.get()) {
             try {
-                mediaPlayer!!.start()
+                mediaPlayer?.start()
+                eventCallback.onBufferingUpdate(false)
             } catch (e: IllegalStateException) {
                 eventCallback.onError("Cannot play: ${e.message}")
             }
@@ -130,73 +127,98 @@ class VideoPlayerManager(
     }
 
     fun pause() {
-        if (mediaPlayer != null && isPrepared && !isReleased) {
+        if (isPrepared.get() && !isReleased.get()) {
             try {
-                mediaPlayer!!.pause()
+                mediaPlayer?.pause()
             } catch (e: IllegalStateException) {
-              
+                // Игнорируем
             }
         }
     }
 
     fun seekTo(position: Float) {
-        if (mediaPlayer != null && isPrepared && !isReleased) {
+        if (isPrepared.get() && !isReleased.get()) {
             try {
                 val posMillis = (position * 1000).toInt()
-                mediaPlayer!!.seekTo(posMillis)
+                mediaPlayer?.seekTo(posMillis)
             } catch (e: IllegalStateException) {
                 eventCallback.onError("Cannot seek: ${e.message}")
             }
         }
     }
 
-    fun setVolume(volume: Float) {
-        if (mediaPlayer != null && !isReleased) {
+    fun getCurrentPosition(): Double {
+        return if (isPrepared.get() && !isReleased.get()) {
             try {
-                mediaPlayer!!.setVolume(volume, volume)
+                mediaPlayer?.currentPosition?.div(1000.0) ?: 0.0
             } catch (e: IllegalStateException) {
-               
+                0.0
+            }
+        } else {
+            0.0
+        }
+    }
+
+    fun getDuration(): Double {
+        return if (isPrepared.get() && !isReleased.get()) {
+            try {
+                mediaPlayer?.duration?.div(1000.0) ?: 0.0
+            } catch (e: IllegalStateException) {
+                0.0
+            }
+        } else {
+            0.0
+        }
+    }
+
+    fun isPlaying(): Boolean {
+        return if (isPrepared.get() && !isReleased.get()) {
+            try {
+                mediaPlayer?.isPlaying ?: false
+            } catch (e: IllegalStateException) {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    fun setVolume(volume: Float) {
+        if (!isReleased.get()) {
+            try {
+                mediaPlayer?.setVolume(volume, volume)
+            } catch (e: IllegalStateException) {
+                // Игнорируем
             }
         }
     }
 
     fun setPlaybackSpeed(speed: Float) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (mediaPlayer != null && !isReleased) {
+            if (!isReleased.get()) {
                 try {
-                    val params = mediaPlayer!!.playbackParams ?: PlaybackParams()
+                    val params = mediaPlayer?.playbackParams ?: PlaybackParams()
                     params.speed = speed
-                    mediaPlayer!!.playbackParams = params
+                    mediaPlayer?.playbackParams = params
                 } catch (e: IllegalStateException) {
-                    
+                    // Игнорируем
                 }
             }
         }
     }
 
-    fun getDuration(): Float {
-        if (mediaPlayer != null && isPrepared && !isReleased) {
-            try {
-                return mediaPlayer!!.duration / 1000.0f
-            } catch (e: IllegalStateException) {
-                return 0f
-            }
-        }
-        return 0f
-    }
-
     fun release() {
-        isReleased = true
-        isPrepared = false
+        if (isReleased.getAndSet(true)) return
         
         handler.removeCallbacks(positionUpdateRunnable)
+        isPrepared.set(false)
         
         mediaPlayer?.let { player ->
             try {
                 player.stop()
                 player.release()
             } catch (e: IllegalStateException) {
-                
+                // Игнорируем
             }
         }
         mediaPlayer = null
