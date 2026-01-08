@@ -7,21 +7,15 @@ import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
-import android.os.CancellationSignal
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.util.Log
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.ExecutorService
 
-/**
- * Генерация миниатюр (thumbnail). Оптимизирована:
- * - Для API >= 29 используем ContentResolver.loadThumbnail (если доступно)
- * - Для видео используем MediaMetadataRetriever
- * - Вся работа в фоне; результат возвращаем в UI-поток
- */
 class ThumbnailManager(
     private val context: Context,
     private val executor: ExecutorService,
@@ -38,7 +32,11 @@ class ThumbnailManager(
 
         executor.execute {
             try {
-                val contentUri = if (mediaType == "video") MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                val contentUri = if (mediaType == "video") {
+                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                } else {
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                }
                 val idLong = mediaId.toLongOrNull()
                 if (idLong == null) {
                     mainHandler.post { result.error("INVALID_ARG", "mediaId must be numeric", null) }
@@ -52,6 +50,7 @@ class ThumbnailManager(
                 }
 
                 if (bitmap == null) {
+                    Log.w("ThumbnailManager", "Failed to create thumbnail for $mediaId")
                     mainHandler.post { result.error("THUMBNAIL_ERROR", "Failed to create thumbnail", null) }
                     return@execute
                 }
@@ -63,9 +62,11 @@ class ThumbnailManager(
 
                 mainHandler.post { result.success(bytes) }
             } catch (e: SecurityException) {
+                Log.e("ThumbnailManager", "Permission denied: ${e.message}")
                 mainHandler.post { result.error("PERMISSION_DENIED", e.message ?: "Permission denied", null) }
             } catch (e: Exception) {
-                mainHandler.post { result.error("THUMBNAIL_ERROR", e.message ?: "Error", null) }
+                Log.e("ThumbnailManager", "Error creating thumbnail: ${e.message}")
+                mainHandler.post { result.error("THUMBNAIL_ERROR", e.message ?: "Error creating thumbnail", null) }
             }
         }
     }
@@ -77,6 +78,7 @@ class ThumbnailManager(
                 val size = android.util.Size(reqWidth, reqHeight)
                 context.contentResolver.loadThumbnail(uri, size, null)
             } catch (e: Exception) {
+                Log.w("ThumbnailManager", "loadThumbnail failed: ${e.message}")
                 // fallback ниже
                 null
             }
@@ -97,19 +99,41 @@ class ThumbnailManager(
                 }
             }
         } catch (e: Exception) {
+            Log.w("ThumbnailManager", "createImageThumbnail failed: ${e.message}")
             null
         }
     }
 
     private fun createVideoThumbnail(uri: Uri, width: Int, height: Int): Bitmap? {
-        // Для видео используем MediaMetadataRetriever (универсально)
+        // Для видео используем MediaMetadataRetriever с улучшенной обработкой ошибок
         return try {
             val mmr = MediaMetadataRetriever()
             mmr.setDataSource(context, uri)
-            val frame = mmr.frameAtTime // ключевой фрейм
+            
+            // Пробуем получить ключевой фрейм с таймкодом 0
+            var frame = mmr.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            
+            // Если не получилось, пробуем другие опции
+            if (frame == null) {
+                frame = mmr.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            }
+            
+            // Если всё равно не получилось, пробуем без специфических опций
+            if (frame == null) {
+                frame = mmr.frameAtTime
+            }
+            
             mmr.release()
-            frame?.let { Bitmap.createScaledBitmap(it, width, height, true) }
+            
+            frame?.let { 
+                if (it.width > 0 && it.height > 0) {
+                    Bitmap.createScaledBitmap(it, width, height, true)
+                } else {
+                    null
+                }
+            }
         } catch (e: Exception) {
+            Log.w("ThumbnailManager", "createVideoThumbnail failed for $uri: ${e.message}")
             null
         }
     }

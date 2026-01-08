@@ -38,14 +38,13 @@ class VideoPlayerManager(
                     try {
                         if (player.isPlaying) {
                             val currentPos = player.currentPosition
-                            val duration = player.duration
                             eventCallback.onPlaybackUpdate(
                                 currentPos / 1000.0, 
                                 true
                             )
                         }
                     } catch (e: IllegalStateException) {
-                       
+                        // Игнорируем
                     }
                 }
             }
@@ -64,23 +63,9 @@ class VideoPlayerManager(
         
         try {
             mediaPlayer = MediaPlayer().apply {
-                when {
-                    !videoPath.isNullOrEmpty() -> {
-                        val file = File(videoPath)
-                        if (file.exists()) {
-                            Log.d("VideoPlayerManager", "Setting data source from file: $videoPath")
-                            setDataSource(file.absolutePath)
-                        } else {
-                            throw IllegalArgumentException("File does not exist: $videoPath")
-                        }
-                    }
-                    !videoUri.isNullOrEmpty() -> {
-                        val uri = Uri.parse(videoUri)
-                        Log.d("VideoPlayerManager", "Setting data source from URI: $videoUri")
-                        setDataSource(context, uri)
-                    }
-                    else -> throw IllegalArgumentException("No video source provided")
-                }
+                val uri = getVideoUri()
+                Log.d("VideoPlayerManager", "Setting data source from URI: $uri")
+                setDataSource(context, uri)
 
                 setOnPreparedListener {
                     Log.d("VideoPlayerManager", "MediaPlayer prepared, duration: ${it.duration}")
@@ -88,7 +73,7 @@ class VideoPlayerManager(
                     eventCallback.onPrepared(it.duration / 1000.0)
                     eventCallback.onBufferingUpdate(false)
                     
-                    
+                    // Запускаем обновление позиции
                     handler.post(positionUpdateRunnable)
                 }
 
@@ -119,11 +104,11 @@ class VideoPlayerManager(
                     eventCallback.onVideoSizeChanged(width, height)
                 }
 
-             
+                // Включаем экран во время воспроизведения
                 setScreenOnWhilePlaying(true)
                 setWakeMode(context, android.os.PowerManager.PARTIAL_WAKE_LOCK)
 
-               
+                // Начинаем асинхронную подготовку
                 Log.d("VideoPlayerManager", "Starting async preparation")
                 prepareAsync()
                 eventCallback.onBufferingUpdate(true)
@@ -133,6 +118,30 @@ class VideoPlayerManager(
             eventCallback.onError("Initialization error: ${e.message}")
             release()
         }
+    }
+
+    private fun getVideoUri(): Uri {
+        // Проверяем videoUri как content URI
+        if (!videoUri.isNullOrEmpty() && videoUri!!.startsWith("content://")) {
+            return Uri.parse(videoUri)
+        }
+        
+        // Проверяем videoPath как content URI
+        if (!videoPath.isNullOrEmpty() && videoPath!!.startsWith("content://")) {
+            return Uri.parse(videoPath)
+        }
+        
+        // Проверяем videoPath как файловый путь
+        if (!videoPath.isNullOrEmpty() && File(videoPath).exists()) {
+            return Uri.fromFile(File(videoPath))
+        }
+        
+        // Проверяем videoUri как файловый путь
+        if (!videoUri.isNullOrEmpty() && File(videoUri).exists()) {
+            return Uri.fromFile(File(videoUri))
+        }
+        
+        throw IllegalArgumentException("No valid video source provided. Path: $videoPath, URI: $videoUri")
     }
 
     fun setDisplay(holder: android.view.SurfaceHolder?) {
@@ -281,7 +290,7 @@ class VideoPlayerManager(
         mediaPlayer?.let { player ->
             try {
                 player.reset()
-               
+                // Переинициализируем
                 initializeMediaPlayer()
             } catch (e: IllegalStateException) {
                 Log.e("VideoPlayerManager", "Error resetting MediaPlayer: ${e.message}")

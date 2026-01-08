@@ -218,7 +218,7 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
 
   @override
   Future<bool> initializeVideo({
-    required String videoPath,
+    String? videoPath,
     String? videoUri,
     bool autoPlay = false,
     double volume = 1.0,
@@ -226,6 +226,11 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
     if (kDebugMode) {
       debugPrint('Initializing video with path: $videoPath, uri: $videoUri');
     }
+
+    if (videoPath == null && videoUri == null) {
+      throw ArgumentError('Either videoPath or videoUri must be provided');
+    }
+
     final result = await videoMethodChannel.invokeMethod<bool>(
       'initialize',
       {
