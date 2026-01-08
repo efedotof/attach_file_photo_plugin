@@ -2,6 +2,7 @@ package com.example.device_media_library
 
 import android.content.Context
 import android.graphics.Color
+import android.util.Log
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.widget.FrameLayout
@@ -52,11 +53,8 @@ class VideoPlayerPlatformView(
     override fun surfaceCreated(holder: SurfaceHolder) {
         Log.d("VideoPlayerPlatformView", "Surface created for view $viewId")
         isSurfaceReady = true
-        
-
         progressBar.visibility = android.view.View.GONE
         
-       
         val plugin = DeviceMediaLibraryPlugin.getInstance()
         plugin?.videoPlayerManager?.setDisplay(holder)
     }
@@ -68,10 +66,7 @@ class VideoPlayerPlatformView(
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         Log.d("VideoPlayerPlatformView", "Surface destroyed for view $viewId")
         isSurfaceReady = false
-        
-   
         progressBar.visibility = android.view.View.VISIBLE
-        
         
         val plugin = DeviceMediaLibraryPlugin.getInstance()
         plugin?.videoPlayerManager?.setDisplay(null)

@@ -3,6 +3,7 @@ package com.example.device_media_library
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -33,6 +34,7 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
 
     companion object {
         private var instance: DeviceMediaLibraryPlugin? = null
+        const val PERMISSION_REQUEST_CODE = 123
         
         fun getInstance(): DeviceMediaLibraryPlugin? = instance
     }
@@ -172,7 +174,6 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                     val autoPlay = call.argument<Boolean>("autoPlay") ?: false
                     val volume = call.argument<Double>("volume")?.toFloat() ?: 1.0f
 
-                    // Освобождаем предыдущий плеер
                     videoPlayerManager?.release()
                     videoPlayerManager = null
 
@@ -245,7 +246,6 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                             
                             if (autoPlay) {
                                 Log.d("VideoMethodCallHandler", "AutoPlay enabled, will play after preparation")
-                                // Автовоспроизведение будет после подготовки
                             }
                             
                             result.success(true)
@@ -341,9 +341,5 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                 else -> result.notImplemented()
             }
         }
-    }
-
-    companion object {
-        const val PERMISSION_REQUEST_CODE = 123
     }
 }
