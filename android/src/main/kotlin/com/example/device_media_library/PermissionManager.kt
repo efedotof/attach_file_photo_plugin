@@ -10,14 +10,16 @@ import androidx.core.content.ContextCompat
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.MethodChannel
 
-/**
- * Управление разрешениями — небольшая обёртка.
- * По-прежнему синхронный интерфейс (возвращает результат через Flutter Result).
- */
+
 class PermissionManager(private val context: Context) {
+
+    companion object {
+        private const val PERMISSION_REQUEST_CODE = 10001
+    }
+
     private var activityBinding: ActivityPluginBinding? = null
-    private var permissionResult: MethodChannel.Result? = null
-    private var isRequestInProgress = false
+    private var pendingResult: MethodChannel.Result? = null
+    private var requestInProgress = false
 
     fun setActivityBinding(binding: ActivityPluginBinding?) {
         activityBinding = binding
@@ -31,39 +33,68 @@ class PermissionManager(private val context: Context) {
     }
 
     fun requestPermission(activity: Activity, result: MethodChannel.Result) {
-        if (isRequestInProgress) {
-            // если уже идёт запрос — просто отвечаем false, caller может повторить попытку
-            result.error("REQUEST_IN_PROGRESS", "Permission request already in progress", null)
+        if (requestInProgress) {
+            result.error(
+                "REQUEST_IN_PROGRESS",
+                "Permission request already in progress",
+                null
+            )
             return
         }
-        isRequestInProgress = true
-        permissionResult = result
+
+        requestInProgress = true
+        pendingResult = result
 
         val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
+            arrayOf(
+                Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VIDEO
+            )
         } else {
-            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+            arrayOf(
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            )
         }
 
-        ActivityCompat.requestPermissions(activity, permissions, DeviceMediaLibraryPlugin.PERMISSION_REQUEST_CODE)
+        ActivityCompat.requestPermissions(
+            activity,
+            permissions,
+            PERMISSION_REQUEST_CODE
+        )
     }
 
-    private fun onRequestPermissionsResult(requestCode: Int, grantResults: IntArray): Boolean {
-        if (requestCode != DeviceMediaLibraryPlugin.PERMISSION_REQUEST_CODE) return false
+    private fun onRequestPermissionsResult(
+        requestCode: Int,
+        grantResults: IntArray
+    ): Boolean {
 
-        val granted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
-        permissionResult?.success(granted)
-        permissionResult = null
-        isRequestInProgress = false
+        if (requestCode != PERMISSION_REQUEST_CODE) return false
+
+        val granted = grantResults.isNotEmpty() &&
+                grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+
+        pendingResult?.success(granted)
+        pendingResult = null
+        requestInProgress = false
+
         return true
     }
 
     fun hasPermission(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED &&
-                    ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.READ_MEDIA_IMAGES
+            ) == PackageManager.PERMISSION_GRANTED &&
+                    ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.READ_MEDIA_VIDEO
+                    ) == PackageManager.PERMISSION_GRANTED
         } else {
-            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            ) == PackageManager.PERMISSION_GRANTED
         }
     }
 }

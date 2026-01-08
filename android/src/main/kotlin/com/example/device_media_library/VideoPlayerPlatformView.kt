@@ -54,10 +54,11 @@ class VideoPlayerPlatformView(
         Log.d("VideoPlayerPlatformView", "Surface created for view $viewId")
         isSurfaceReady = true
         progressBar.visibility = android.view.View.GONE
-        
-        val plugin = DeviceMediaLibraryPlugin.getInstance()
-        plugin?.videoPlayerManager?.setDisplay(holder)
+
+        DeviceMediaLibraryPlugin.getInstance()
+            ?.attachSurface(holder)
     }
+
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         Log.d("VideoPlayerPlatformView", "Surface changed: ${width}x$height")
@@ -67,10 +68,11 @@ class VideoPlayerPlatformView(
         Log.d("VideoPlayerPlatformView", "Surface destroyed for view $viewId")
         isSurfaceReady = false
         progressBar.visibility = android.view.View.VISIBLE
-        
-        val plugin = DeviceMediaLibraryPlugin.getInstance()
-        plugin?.videoPlayerManager?.setDisplay(null)
+
+        DeviceMediaLibraryPlugin.getInstance()
+            ?.attachSurface(null)
     }
+
 
     override fun getView(): android.view.View = container
 

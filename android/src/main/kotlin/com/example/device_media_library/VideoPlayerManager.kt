@@ -2,21 +2,19 @@ package com.example.device_media_library
 
 import android.content.Context
 import android.media.MediaPlayer
-import android.media.PlaybackParams
 import android.net.Uri
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 class VideoPlayerManager(
     private val context: Context,
     private val videoPath: String?,
     private val videoUri: String?,
-    private val eventCallback: VideoEventCallback
+    private val callback: VideoEventCallback
 ) {
+
     interface VideoEventCallback {
         fun onPrepared(duration: Double)
         fun onPlaybackUpdate(position: Double, isPlaying: Boolean)
@@ -27,275 +25,112 @@ class VideoPlayerManager(
     }
 
     private var mediaPlayer: MediaPlayer? = null
-    private val isPrepared = AtomicBoolean(false)
-    private val isReleased = AtomicBoolean(false)
+    private val prepared = AtomicBoolean(false)
+    private val released = AtomicBoolean(false)
     private val handler = Handler(Looper.getMainLooper())
-    
-    private val positionUpdateRunnable = object : Runnable {
+
+    private val positionUpdater = object : Runnable {
         override fun run() {
-            if (isPrepared.get() && !isReleased.get()) {
-                mediaPlayer?.let { player ->
-                    try {
-                        if (player.isPlaying) {
-                            val currentPos = player.currentPosition
-                            eventCallback.onPlaybackUpdate(
-                                currentPos / 1000.0, 
-                                true
-                            )
-                        }
-                    } catch (e: IllegalStateException) {
-                        // Игнорируем
-                    }
+            if (prepared.get() && !released.get()) {
+                try {
+                    val mp = mediaPlayer ?: return
+                    val pos = mp.currentPosition / 1000.0
+                    callback.onPlaybackUpdate(pos, mp.isPlaying)
+                } catch (_: Exception) {
                 }
-            }
-            if (!isReleased.get()) {
-                handler.postDelayed(this, 200)
+                handler.postDelayed(this, 300)
             }
         }
     }
 
     init {
-        initializeMediaPlayer()
+        initPlayer()
     }
 
-    private fun initializeMediaPlayer() {
-        if (isReleased.get()) return
-        
+    private fun initPlayer() {
         try {
+            val uri = resolveUri()
+            Log.d("VideoPlayerManager", "Using uri=$uri")
+
             mediaPlayer = MediaPlayer().apply {
-                val uri = getVideoUri()
-                Log.d("VideoPlayerManager", "Setting data source from URI: $uri")
                 setDataSource(context, uri)
 
                 setOnPreparedListener {
-                    Log.d("VideoPlayerManager", "MediaPlayer prepared, duration: ${it.duration}")
-                    isPrepared.set(true)
-                    eventCallback.onPrepared(it.duration / 1000.0)
-                    eventCallback.onBufferingUpdate(false)
-                    
-                    // Запускаем обновление позиции
-                    handler.post(positionUpdateRunnable)
+                    prepared.set(true)
+                    val durationSec = it.duration / 1000.0
+                    Log.d("VideoPlayerManager", "Prepared, duration=$durationSec")
+                    callback.onPrepared(durationSec)
+                    callback.onBufferingUpdate(false)
+                    handler.post(positionUpdater)
                 }
 
-                setOnBufferingUpdateListener { _, percent ->
-                    Log.d("VideoPlayerManager", "Buffering: $percent%")
-                    eventCallback.onBufferingUpdate(percent < 100)
+                setOnVideoSizeChangedListener { _, w, h ->
+                    callback.onVideoSizeChanged(w, h)
                 }
 
                 setOnCompletionListener {
-                    Log.d("VideoPlayerManager", "Playback completed")
-                    eventCallback.onCompleted()
+                    callback.onCompleted()
                 }
 
                 setOnErrorListener { _, what, extra ->
-                    val errorMsg = "MediaPlayer error: what=$what, extra=$extra"
-                    Log.e("VideoPlayerManager", errorMsg)
-                    eventCallback.onError(errorMsg)
+                    val msg = "MediaPlayer error what=$what extra=$extra"
+                    Log.e("VideoPlayerManager", msg)
+                    callback.onError(msg)
                     true
                 }
 
-                setOnInfoListener { _, what, extra ->
-                    Log.d("VideoPlayerManager", "MediaPlayer info: what=$what, extra=$extra")
-                    true
-                }
-
-                setOnVideoSizeChangedListener { _, width, height ->
-                    Log.d("VideoPlayerManager", "Video size changed: ${width}x$height")
-                    eventCallback.onVideoSizeChanged(width, height)
-                }
-
-                // Включаем экран во время воспроизведения
-                setScreenOnWhilePlaying(true)
-                setWakeMode(context, android.os.PowerManager.PARTIAL_WAKE_LOCK)
-
-                // Начинаем асинхронную подготовку
-                Log.d("VideoPlayerManager", "Starting async preparation")
                 prepareAsync()
-                eventCallback.onBufferingUpdate(true)
+                callback.onBufferingUpdate(true)
             }
+
         } catch (e: Exception) {
-            Log.e("VideoPlayerManager", "Initialization error: ${e.message}", e)
-            eventCallback.onError("Initialization error: ${e.message}")
-            release()
+            Log.e("VideoPlayerManager", "Init failed", e)
+            callback.onError(e.message ?: "Init failed")
         }
     }
 
-    private fun getVideoUri(): Uri {
-        // Проверяем videoUri как content URI
-        if (!videoUri.isNullOrEmpty() && videoUri!!.startsWith("content://")) {
-            return Uri.parse(videoUri)
+    private fun resolveUri(): Uri {
+        videoUri?.let {
+            return Uri.parse(it)
         }
-        
-        // Проверяем videoPath как content URI
-        if (!videoPath.isNullOrEmpty() && videoPath!!.startsWith("content://")) {
-            return Uri.parse(videoPath)
+        videoPath?.let {
+            return Uri.parse(it)
         }
-        
-        // Проверяем videoPath как файловый путь
-        if (!videoPath.isNullOrEmpty() && File(videoPath).exists()) {
-            return Uri.fromFile(File(videoPath))
-        }
-        
-        // Проверяем videoUri как файловый путь
-        if (!videoUri.isNullOrEmpty() && File(videoUri).exists()) {
-            return Uri.fromFile(File(videoUri))
-        }
-        
-        throw IllegalArgumentException("No valid video source provided. Path: $videoPath, URI: $videoUri")
+        throw IllegalArgumentException("Video URI is null")
     }
 
     fun setDisplay(holder: android.view.SurfaceHolder?) {
-        if (!isReleased.get()) {
-            try {
-                mediaPlayer?.setDisplay(holder)
-                if (holder != null) {
-                    Log.d("VideoPlayerManager", "SurfaceHolder set successfully")
-                }
-            } catch (e: Exception) {
-                Log.e("VideoPlayerManager", "Error setting display: ${e.message}")
-            }
-        }
+        mediaPlayer?.setDisplay(holder)
     }
 
     fun play() {
-        if (isPrepared.get() && !isReleased.get()) {
-            try {
-                mediaPlayer?.start()
-                Log.d("VideoPlayerManager", "Play called")
-                eventCallback.onBufferingUpdate(false)
-            } catch (e: IllegalStateException) {
-                Log.e("VideoPlayerManager", "Cannot play: ${e.message}")
-                eventCallback.onError("Cannot play: ${e.message}")
-            }
-        } else {
-            Log.w("VideoPlayerManager", "Cannot play: not prepared or released")
-        }
+        if (prepared.get()) mediaPlayer?.start()
     }
 
     fun pause() {
-        if (isPrepared.get() && !isReleased.get()) {
-            try {
-                mediaPlayer?.pause()
-                Log.d("VideoPlayerManager", "Pause called")
-            } catch (e: IllegalStateException) {
-                Log.e("VideoPlayerManager", "Cannot pause: ${e.message}")
-            }
-        }
+        if (prepared.get()) mediaPlayer?.pause()
     }
 
-    fun seekTo(position: Float) {
-        if (isPrepared.get() && !isReleased.get()) {
-            try {
-                val posMillis = (position * 1000).toInt()
-                mediaPlayer?.seekTo(posMillis)
-                Log.d("VideoPlayerManager", "Seek to: $posMillis ms")
-            } catch (e: IllegalStateException) {
-                Log.e("VideoPlayerManager", "Cannot seek: ${e.message}")
-                eventCallback.onError("Cannot seek: ${e.message}")
-            }
-        } else {
-            Log.w("VideoPlayerManager", "Cannot seek: not prepared or released")
-        }
+    fun seekTo(seconds: Float) {
+        if (prepared.get()) mediaPlayer?.seekTo((seconds * 1000).toInt())
     }
 
-    fun getCurrentPosition(): Double {
-        return if (isPrepared.get() && !isReleased.get()) {
-            try {
-                mediaPlayer?.currentPosition?.div(1000.0) ?: 0.0
-            } catch (e: IllegalStateException) {
-                0.0
-            }
-        } else {
-            0.0
-        }
-    }
+    fun getDuration(): Double =
+        if (prepared.get()) mediaPlayer?.duration?.div(1000.0) ?: 0.0 else 0.0
 
-    fun getDuration(): Double {
-        return if (isPrepared.get() && !isReleased.get()) {
-            try {
-                mediaPlayer?.duration?.div(1000.0) ?: 0.0
-            } catch (e: IllegalStateException) {
-                0.0
-            }
-        } else {
-            0.0
-        }
-    }
+    fun getCurrentPosition(): Double =
+        if (prepared.get()) mediaPlayer?.currentPosition?.div(1000.0) ?: 0.0 else 0.0
 
-    fun isPlaying(): Boolean {
-        return if (isPrepared.get() && !isReleased.get()) {
-            try {
-                mediaPlayer?.isPlaying ?: false
-            } catch (e: IllegalStateException) {
-                false
-            }
-        } else {
-            false
-        }
-    }
+    fun isPlaying(): Boolean = mediaPlayer?.isPlaying ?: false
 
-    fun setVolume(volume: Float) {
-        if (!isReleased.get()) {
-            try {
-                mediaPlayer?.setVolume(volume, volume)
-                Log.d("VideoPlayerManager", "Volume set to: $volume")
-            } catch (e: IllegalStateException) {
-                Log.e("VideoPlayerManager", "Cannot set volume: ${e.message}")
-            }
-        }
-    }
-
-    fun setPlaybackSpeed(speed: Float) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!isReleased.get()) {
-                try {
-                    val params = mediaPlayer?.playbackParams ?: PlaybackParams()
-                    params.speed = speed
-                    mediaPlayer?.playbackParams = params
-                    Log.d("VideoPlayerManager", "Playback speed set to: $speed")
-                } catch (e: IllegalStateException) {
-                    Log.e("VideoPlayerManager", "Cannot set playback speed: ${e.message}")
-                }
-            }
-        }
+    fun setVolume(v: Float) {
+        mediaPlayer?.setVolume(v, v)
     }
 
     fun release() {
-        if (isReleased.getAndSet(true)) return
-        
-        Log.d("VideoPlayerManager", "Releasing MediaPlayer")
-        
-        handler.removeCallbacks(positionUpdateRunnable)
-        isPrepared.set(false)
-        
-        mediaPlayer?.let { player ->
-            try {
-                player.stop()
-                player.release()
-            } catch (e: IllegalStateException) {
-                Log.e("VideoPlayerManager", "Error releasing MediaPlayer: ${e.message}")
-            }
-        }
+        if (released.getAndSet(true)) return
+        handler.removeCallbacks(positionUpdater)
+        mediaPlayer?.release()
         mediaPlayer = null
-    }
-
-    fun reset() {
-        if (isReleased.get()) return
-        
-        Log.d("VideoPlayerManager", "Resetting MediaPlayer")
-        
-        handler.removeCallbacks(positionUpdateRunnable)
-        isPrepared.set(false)
-        
-        mediaPlayer?.let { player ->
-            try {
-                player.reset()
-                // Переинициализируем
-                initializeMediaPlayer()
-            } catch (e: IllegalStateException) {
-                Log.e("VideoPlayerManager", "Error resetting MediaPlayer: ${e.message}")
-                release()
-            }
-        }
     }
 }
