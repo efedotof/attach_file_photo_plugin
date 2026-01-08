@@ -108,4 +108,7 @@ abstract class DeviceMediaLibraryPlatform extends PlatformInterface {
   Stream<Map<String, dynamic>> get videoEvents {
     throw UnimplementedError('videoEvents getter has not been implemented.');
   }
+
+  Future<double?> getCurrentPosition();
+  Future<bool?> isVideoPlaying();
 }

@@ -214,8 +214,6 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
     return result;
   }
 
-  // Новые методы для видео-плеера
-
   @override
   Future<bool> initializeVideo({
     required String videoPath,
@@ -283,5 +281,15 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
     if (value is double) return value.toInt();
     if (value is String) return int.tryParse(value) ?? 0;
     return 0;
+  }
+
+  @override
+  Future<double?> getCurrentPosition() async {
+    return await videoMethodChannel.invokeMethod<double>('getCurrentPosition');
+  }
+
+  @override
+  Future<bool?> isVideoPlaying() async {
+    return await videoMethodChannel.invokeMethod<bool>('isPlaying');
   }
 }

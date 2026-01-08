@@ -73,8 +73,6 @@ class DeviceMediaLibrary {
     );
   }
 
-  // Новые методы для видео-плеера
-
   Future<bool> initializeVideo({
     required String videoPath,
     String? videoUri,
@@ -119,5 +117,13 @@ class DeviceMediaLibrary {
 
   Stream<Map<String, dynamic>> get videoEvents {
     return DeviceMediaLibraryPlatform.instance.videoEvents;
+  }
+
+  Future<double?> getCurrentPosition() {
+    return DeviceMediaLibraryPlatform.instance.getCurrentPosition();
+  }
+
+  Future<bool?> isVideoPlaying() {
+    return DeviceMediaLibraryPlatform.instance.isVideoPlaying();
   }
 }
