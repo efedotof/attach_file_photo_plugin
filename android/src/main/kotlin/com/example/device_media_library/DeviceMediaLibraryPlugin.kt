@@ -157,7 +157,7 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                 "initialize" -> {
                     val path = call.argument<String>("videoPath")
                     val uri = call.argument<String>("videoUri")
-                    val volume = call.argument<Double>("volume")?.toFloat() ?: 1f
+                    val volume = call.argument<Double>("volume") ?: 1.0
 
                     videoPlayerManager?.release()
                     videoPlayerManager = VideoPlayerManager(
@@ -204,7 +204,8 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                         }
                     )
 
-                    videoPlayerManager?.setVolume(volume)
+                    // setVolume ожидает Float
+                    videoPlayerManager?.setVolume(volume.toFloat())
                     result.success(true)
                 }
 
@@ -219,8 +220,9 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                 }
 
                 "seekTo" -> {
-                    call.argument<Double>("position")?.toFloat()?.let {
-                        videoPlayerManager?.seekTo(it)
+                    // ожидаем Double, передаем в VideoPlayerManager как Double
+                    call.argument<Double>("position")?.let { pos ->
+                        videoPlayerManager?.seekTo(pos)
                     }
                     result.success(null)
                 }
@@ -235,6 +237,7 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
             }
         }
     }
+
 
     fun attachSurface(holder: android.view.SurfaceHolder?) {
         videoPlayerManager?.setDisplay(holder)

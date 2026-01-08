@@ -5,35 +5,30 @@ import 'package:flutter/services.dart';
 import 'device_media_library_platform_interface.dart';
 
 class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
-  final methodChannel = const MethodChannel('device_media_library');
-  final videoMethodChannel = const MethodChannel('device_media_library/video');
-  final videoEventChannel =
+  final MethodChannel _methodChannel =
+      const MethodChannel('device_media_library');
+  final MethodChannel _videoMethodChannel =
+      const MethodChannel('device_media_library/video');
+  final EventChannel _videoEventChannel =
       const EventChannel('device_media_library/video/events');
 
   Stream<Map<String, dynamic>>? _videoEventsStream;
 
   @override
   Future<String?> getPlatformVersion() async {
-    final version = await methodChannel.invokeMethod<String>(
-      'getPlatformVersion',
-    );
-    return version;
+    return _methodChannel.invokeMethod<String>('getPlatformVersion');
   }
 
   @override
   Future<bool> checkPermission() async {
-    final hasPermission = await methodChannel.invokeMethod<bool>(
-      'checkPermission',
-    );
-    return hasPermission ?? false;
+    final bool? result = await _methodChannel.invokeMethod('checkPermission');
+    return result ?? false;
   }
 
   @override
   Future<bool> requestPermission() async {
-    final hasPermission = await methodChannel.invokeMethod<bool>(
-      'requestPermission',
-    );
-    return hasPermission ?? false;
+    final bool? result = await _methodChannel.invokeMethod('requestPermission');
+    return result ?? false;
   }
 
   @override
@@ -42,16 +37,17 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
     int? offset,
     String? albumId,
   }) async {
-    final result = await methodChannel.invokeMethod<List<dynamic>>(
-      'getImages',
-      {'limit': limit, 'offset': offset, 'albumId': albumId},
-    );
+    final List<dynamic>? result =
+        await _methodChannel.invokeMethod('getImages', {
+      'limit': limit,
+      'offset': offset,
+      'albumId': albumId,
+    });
 
     if (result == null) return null;
 
     return result.map<Map<String, dynamic>>((item) {
       final map = Map<String, dynamic>.from(item as Map<dynamic, dynamic>);
-
       return {
         'id': map['id']?.toString() ?? '',
         'name': map['name']?.toString() ?? '',
@@ -73,16 +69,17 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
     int? offset,
     String? albumId,
   }) async {
-    final result = await methodChannel.invokeMethod<List<dynamic>>(
-      'getVideos',
-      {'limit': limit, 'offset': offset, 'albumId': albumId},
-    );
+    final List<dynamic>? result =
+        await _methodChannel.invokeMethod('getVideos', {
+      'limit': limit,
+      'offset': offset,
+      'albumId': albumId,
+    });
 
     if (result == null) return null;
 
     return result.map<Map<String, dynamic>>((item) {
       final map = Map<String, dynamic>.from(item as Map<dynamic, dynamic>);
-
       return {
         'id': map['id']?.toString() ?? '',
         'name': map['name']?.toString() ?? '',
@@ -105,10 +102,12 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
     int? offset,
     String? albumId,
   }) async {
-    final result = await methodChannel.invokeMethod<List<dynamic>>(
-      'getAllMedia',
-      {'limit': limit, 'offset': offset, 'albumId': albumId},
-    );
+    final List<dynamic>? result =
+        await _methodChannel.invokeMethod('getAllMedia', {
+      'limit': limit,
+      'offset': offset,
+      'albumId': albumId,
+    });
 
     if (result == null) return null;
 
@@ -138,13 +137,13 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
 
   @override
   Future<List<Map<String, dynamic>>?> getAlbums() async {
-    final result = await methodChannel.invokeMethod<List<dynamic>>('getAlbums');
+    final List<dynamic>? result =
+        await _methodChannel.invokeMethod('getAlbums');
 
     if (result == null) return null;
 
     return result.map<Map<String, dynamic>>((item) {
       final map = Map<String, dynamic>.from(item as Map<dynamic, dynamic>);
-
       return {
         'id': map['id']?.toString() ?? '',
         'name': map['name']?.toString() ?? '',
@@ -160,10 +159,12 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
     int? limit,
     int? offset,
   }) async {
-    final result = await methodChannel.invokeMethod<List<dynamic>>(
-      'getMediaFromAlbum',
-      {'albumId': albumId, 'limit': limit, 'offset': offset},
-    );
+    final List<dynamic>? result =
+        await _methodChannel.invokeMethod('getMediaFromAlbum', {
+      'albumId': albumId,
+      'limit': limit,
+      'offset': offset,
+    });
 
     if (result == null) return null;
 
@@ -193,10 +194,10 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
 
   @override
   Future<Uint8List?> getFileBytes(String uri) async {
-    final result = await methodChannel.invokeMethod<Uint8List>(
-      'readFileByUri',
-      {'uri': uri},
-    );
+    final Uint8List? result =
+        await _methodChannel.invokeMethod<Uint8List>('readFileByUri', {
+      'uri': uri,
+    });
     return result;
   }
 
@@ -207,14 +208,19 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
     required int width,
     required int height,
   }) async {
-    final result = await methodChannel.invokeMethod<Uint8List>('getThumbnail', {
-      'mediaId': mediaId,
-      'mediaType': mediaType,
-      'width': width,
-      'height': height,
-    });
+    final Uint8List? result = await _methodChannel.invokeMethod<Uint8List>(
+      'getThumbnail',
+      {
+        'mediaId': mediaId,
+        'mediaType': mediaType,
+        'width': width,
+        'height': height,
+      },
+    );
     return result;
   }
+
+  // ===================== Video Methods =====================
 
   @override
   Future<bool> initializeVideo({
@@ -223,118 +229,59 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
     bool autoPlay = false,
     double volume = 1.0,
   }) async {
-    if (kDebugMode) {
-      debugPrint('Initializing video with path: $videoPath, uri: $videoUri');
-    }
-
     if (videoPath == null && videoUri == null) {
       throw ArgumentError('Either videoPath or videoUri must be provided');
     }
 
-    final result = await videoMethodChannel.invokeMethod<bool>(
-      'initialize',
-      {
-        'videoPath': videoPath,
-        'videoUri': videoUri,
-        'autoPlay': autoPlay,
-        'volume': volume,
-      },
-    );
-    if (kDebugMode) {
-      debugPrint('Video initialization result: $result');
-    }
+    final bool? result = await _videoMethodChannel.invokeMethod('initialize', {
+      'videoPath': videoPath,
+      'videoUri': videoUri,
+      'autoPlay': autoPlay,
+      'volume': volume,
+    });
     return result ?? false;
   }
 
   @override
-  Future<void> playVideo() async {
-    if (kDebugMode) {
-      debugPrint('Playing video');
-    }
-    await videoMethodChannel.invokeMethod('play');
-  }
+  Future<void> playVideo() => _videoMethodChannel.invokeMethod('play');
 
   @override
-  Future<void> pauseVideo() async {
-    if (kDebugMode) {
-      debugPrint('Pausing video');
-    }
-    await videoMethodChannel.invokeMethod('pause');
-  }
+  Future<void> pauseVideo() => _videoMethodChannel.invokeMethod('pause');
 
   @override
-  Future<void> seekVideoTo(double position) async {
-    if (kDebugMode) {
-      debugPrint('Seeking video to: $position');
-    }
-    await videoMethodChannel.invokeMethod('seekTo', {'position': position});
-  }
+  Future<void> seekVideoTo(double position) =>
+      _videoMethodChannel.invokeMethod('seekTo', {'position': position});
 
   @override
-  Future<void> setVideoVolume(double volume) async {
-    await videoMethodChannel.invokeMethod('setVolume', {'volume': volume});
-  }
+  Future<void> setVideoVolume(double volume) =>
+      _videoMethodChannel.invokeMethod('setVolume', {'volume': volume});
 
   @override
-  Future<void> setVideoPlaybackSpeed(double speed) async {
-    await videoMethodChannel.invokeMethod('setPlaybackSpeed', {'speed': speed});
-  }
+  Future<double?> getVideoDuration() async =>
+      await _videoMethodChannel.invokeMethod<double>('getDuration');
 
   @override
-  Future<double?> getVideoDuration() async {
-    final duration =
-        await videoMethodChannel.invokeMethod<double>('getDuration');
-    if (kDebugMode) {
-      debugPrint('Got video duration: $duration');
-    }
-    return duration;
-  }
+  Future<double?> getCurrentPosition() async =>
+      await _videoMethodChannel.invokeMethod<double>('getCurrentPosition');
 
   @override
-  Future<double?> getCurrentPosition() async {
-    final position =
-        await videoMethodChannel.invokeMethod<double>('getCurrentPosition');
-    if (kDebugMode) {
-      debugPrint('Got video position: $position');
-    }
-    return position;
-  }
+  Future<bool?> isVideoPlaying() async =>
+      await _videoMethodChannel.invokeMethod<bool>('isPlaying');
 
   @override
-  Future<bool?> isVideoPlaying() async {
-    final isPlaying = await videoMethodChannel.invokeMethod<bool>('isPlaying');
-    if (kDebugMode) {
-      debugPrint('Got video playing status: $isPlaying');
-    }
-    return isPlaying;
-  }
+  Future<void> resetVideo() => _videoMethodChannel.invokeMethod('reset');
 
   @override
-  Future<void> resetVideo() async {
-    if (kDebugMode) {
-      debugPrint('Resetting video');
-    }
-    await videoMethodChannel.invokeMethod('reset');
-  }
-
-  @override
-  Future<void> disposeVideo() async {
-    if (kDebugMode) {
-      debugPrint('Disposing video');
-    }
-    await videoMethodChannel.invokeMethod('dispose');
-  }
+  Future<void> disposeVideo() => _videoMethodChannel.invokeMethod('dispose');
 
   @override
   Stream<Map<String, dynamic>> get videoEvents {
-    _videoEventsStream ??= videoEventChannel
+    _videoEventsStream ??= _videoEventChannel
         .receiveBroadcastStream()
         .map((event) =>
             Map<String, dynamic>.from(event as Map<dynamic, dynamic>))
         .handleError((error) {
-      if (kDebugMode) {
-        debugPrint('Video event error: $error');
-      }
+      if (kDebugMode) debugPrint('Video event error: $error');
     });
     return _videoEventsStream!;
   }

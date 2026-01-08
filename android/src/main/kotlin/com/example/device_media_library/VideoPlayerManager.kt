@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
 class VideoPlayerManager(
@@ -36,7 +37,8 @@ class VideoPlayerManager(
                     val mp = mediaPlayer ?: return
                     val pos = mp.currentPosition / 1000.0
                     callback.onPlaybackUpdate(pos, mp.isPlaying)
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    Log.e("VideoPlayerManager", "Position update failed", e)
                 }
                 handler.postDelayed(this, 300)
             }
@@ -76,6 +78,7 @@ class VideoPlayerManager(
                     val msg = "MediaPlayer error what=$what extra=$extra"
                     Log.e("VideoPlayerManager", msg)
                     callback.onError(msg)
+                    release() // освобождаем MediaPlayer при ошибке
                     true
                 }
 
@@ -94,7 +97,11 @@ class VideoPlayerManager(
             return Uri.parse(it)
         }
         videoPath?.let {
-            return Uri.parse(it)
+            val file = File(it)
+            if (!file.exists()) {
+                throw IllegalArgumentException("File does not exist: $videoPath")
+            }
+            return Uri.fromFile(file)
         }
         throw IllegalArgumentException("Video URI is null")
     }
@@ -104,22 +111,31 @@ class VideoPlayerManager(
     }
 
     fun play() {
-        if (prepared.get()) mediaPlayer?.start()
+        mediaPlayer?.let {
+            if (!it.isPlaying && prepared.get()) it.start()
+        }
     }
 
     fun pause() {
-        if (prepared.get()) mediaPlayer?.pause()
+        mediaPlayer?.let {
+            if (it.isPlaying && prepared.get()) it.pause()
+        }
     }
 
-    fun seekTo(seconds: Float) {
-        if (prepared.get()) mediaPlayer?.seekTo((seconds * 1000).toInt())
+    fun seekTo(seconds: Double) {
+        mediaPlayer?.let {
+            if (prepared.get()) {
+                val safeSeconds = seconds.coerceIn(0.0, getDuration())
+                it.seekTo((safeSeconds * 1000).toInt())
+            }
+        }
     }
 
     fun getDuration(): Double =
-        if (prepared.get()) mediaPlayer?.duration?.div(1000.0) ?: 0.0 else 0.0
+        mediaPlayer?.takeIf { prepared.get() }?.duration?.div(1000.0) ?: 0.0
 
     fun getCurrentPosition(): Double =
-        if (prepared.get()) mediaPlayer?.currentPosition?.div(1000.0) ?: 0.0 else 0.0
+        mediaPlayer?.takeIf { prepared.get() }?.currentPosition?.div(1000.0) ?: 0.0
 
     fun isPlaying(): Boolean = mediaPlayer?.isPlaying ?: false
 
