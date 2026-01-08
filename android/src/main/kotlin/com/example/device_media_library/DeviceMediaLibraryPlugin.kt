@@ -146,7 +146,7 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
     }
     
     inner class VideoMethodCallHandler : MethodChannel.MethodCallHandler {
-        override fun onMethodCall(call: MethodCall, result: Result) {
+        override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
             when (call.method) {
                 "initialize" -> {
                     val videoPath = call.argument<String>("videoPath")
@@ -154,61 +154,134 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                     val autoPlay = call.argument<Boolean>("autoPlay") ?: false
                     val volume = call.argument<Double>("volume")?.toFloat() ?: 1.0f
 
+                    videoPlayerManager?.release()
+                    videoPlayerManager = null
+
                     if (videoPath != null || videoUri != null) {
-                        videoPlayerManager?.release()
-                        videoPlayerManager = VideoPlayerManager(
-                            context,
-                            videoPath,
-                            videoUri,
-                            ::sendVideoEvent
-                        ).apply {
-                            setVolume(volume)
+                        try {
+                            videoPlayerManager = VideoPlayerManager(
+                                context,
+                                videoPath,
+                                videoUri,
+                                object : VideoPlayerManager.VideoEventCallback {
+                                    override fun onPlaybackUpdate(
+                                        position: Double,
+                                        duration: Double,
+                                        isPlaying: Boolean
+                                    ) {
+                                        sendVideoEvent(
+                                            mapOf(
+                                                "event" to "onPlaybackUpdate",
+                                                "position" to position,
+                                                "duration" to duration,
+                                                "isPlaying" to isPlaying
+                                            )
+                                        )
+                                    }
+                                    
+                                    override fun onBufferingUpdate(isBuffering: Boolean) {
+                                        sendVideoEvent(
+                                            mapOf(
+                                                "event" to "onBufferingUpdate",
+                                                "isBuffering" to isBuffering
+                                            )
+                                        )
+                                    }
+                                    
+                                    override fun onCompleted() {
+                                        sendVideoEvent(mapOf("event" to "onCompleted"))
+                                    }
+                                    
+                                    override fun onError(message: String) {
+                                        sendVideoEvent(
+                                            mapOf(
+                                                "event" to "onError",
+                                                "message" to message
+                                            )
+                                        )
+                                    }
+                                }
+                            )
+                            
+                            videoPlayerManager?.setVolume(volume)
+                            
                             if (autoPlay) {
-                                play()
+                                videoPlayerManager?.play()
                             }
+                            
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("INIT_ERROR", "Failed to initialize video: ${e.message}", null)
                         }
-                        result.success(true)
                     } else {
                         result.error("INVALID_ARGUMENT", "Video path or URI required", null)
                     }
                 }
                 "play" -> {
-                    videoPlayerManager?.play()
-                    result.success(null)
+                    try {
+                        videoPlayerManager?.play()
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("PLAY_ERROR", "Failed to play: ${e.message}", null)
+                    }
                 }
                 "pause" -> {
-                    videoPlayerManager?.pause()
-                    result.success(null)
+                    try {
+                        videoPlayerManager?.pause()
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("PAUSE_ERROR", "Failed to pause: ${e.message}", null)
+                    }
                 }
                 "seekTo" -> {
-                    val position = call.argument<Double>("position")?.toFloat()
-                    if (position != null) {
-                        videoPlayerManager?.seekTo(position)
+                    try {
+                        val position = call.argument<Double>("position")?.toFloat()
+                        if (position != null) {
+                            videoPlayerManager?.seekTo(position)
+                        }
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("SEEK_ERROR", "Failed to seek: ${e.message}", null)
                     }
-                    result.success(null)
                 }
                 "setVolume" -> {
-                    val volume = call.argument<Double>("volume")?.toFloat()
-                    if (volume != null) {
-                        videoPlayerManager?.setVolume(volume)
+                    try {
+                        val volume = call.argument<Double>("volume")?.toFloat()
+                        if (volume != null) {
+                            videoPlayerManager?.setVolume(volume)
+                        }
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("VOLUME_ERROR", "Failed to set volume: ${e.message}", null)
                     }
-                    result.success(null)
                 }
                 "setPlaybackSpeed" -> {
-                    val speed = call.argument<Double>("speed")?.toFloat()
-                    if (speed != null) {
-                        videoPlayerManager?.setPlaybackSpeed(speed)
+                    try {
+                        val speed = call.argument<Double>("speed")?.toFloat()
+                        if (speed != null) {
+                            videoPlayerManager?.setPlaybackSpeed(speed)
+                        }
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("SPEED_ERROR", "Failed to set playback speed: ${e.message}", null)
                     }
-                    result.success(null)
                 }
                 "getDuration" -> {
-                    val duration = videoPlayerManager?.getDuration()?.toDouble()
-                    result.success(duration)
+                    try {
+                        val duration = videoPlayerManager?.getDuration()?.toDouble()
+                        result.success(duration)
+                    } catch (e: Exception) {
+                        result.error("DURATION_ERROR", "Failed to get duration: ${e.message}", 0.0)
+                    }
                 }
                 "dispose" -> {
-                    videoPlayerManager?.release()
-                    videoPlayerManager = null
-                    result.success(null)
+                    try {
+                        videoPlayerManager?.release()
+                        videoPlayerManager = null
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("DISPOSE_ERROR", "Failed to dispose: ${e.message}", null)
+                    }
                 }
                 else -> result.notImplemented()
             }

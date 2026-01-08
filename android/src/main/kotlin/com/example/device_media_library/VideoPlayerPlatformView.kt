@@ -11,9 +11,10 @@ class VideoPlayerPlatformView(
     private val context: Context,
     private val viewId: Int,
     private val args: Any?
-) : PlatformView {
+) : PlatformView, SurfaceHolder.Callback {
     private val surfaceView: SurfaceView
     private val container: FrameLayout
+    private var videoPlayerManager: VideoPlayerManager? = null
 
     init {
         container = FrameLayout(context).apply {
@@ -25,32 +26,70 @@ class VideoPlayerPlatformView(
         }
 
         surfaceView = SurfaceView(context).apply {
-            holder.addCallback(object : SurfaceHolder.Callback {
-                override fun surfaceCreated(holder: SurfaceHolder) {
-                 
-                }
-
-                override fun surfaceChanged(
-                    holder: SurfaceHolder,
-                    format: Int,
-                    width: Int,
-                    height: Int
-                ) {
-
-                }
-
-                override fun surfaceDestroyed(holder: SurfaceHolder) {
-
-                }
-            })
+            holder.addCallback(this@VideoPlayerPlatformView)
         }
 
         container.addView(surfaceView)
+        
+      
+        initializeVideoPlayer()
+    }
+
+    private fun initializeVideoPlayer() {
+        val argsMap = args as? Map<*, *> ?: return
+        
+        val videoPath = argsMap["videoPath"] as? String
+        val videoUri = argsMap["videoUri"] as? String
+        val autoPlay = argsMap["autoPlay"] as? Boolean ?: false
+        val volume = (argsMap["volume"] as? Double)?.toFloat() ?: 1.0f
+
+        videoPlayerManager = VideoPlayerManager(
+            context,
+            videoPath,
+            videoUri,
+            object : VideoPlayerManager.VideoEventCallback {
+                override fun onPlaybackUpdate(position: Double, duration: Double, isPlaying: Boolean) {
+                   
+                }
+                
+                override fun onBufferingUpdate(isBuffering: Boolean) {
+                   
+                }
+                
+                override fun onCompleted() {
+                 
+                }
+                
+                override fun onError(message: String) {
+                    
+                }
+            }
+        )
+        
+       
+        videoPlayerManager?.setDisplay(surfaceView.holder)
+        
+        if (autoPlay) {
+            videoPlayerManager?.play()
+        }
+    }
+
+    override fun surfaceCreated(holder: SurfaceHolder) {
+        videoPlayerManager?.setDisplay(holder)
+    }
+
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+        
+    }
+
+    override fun surfaceDestroyed(holder: SurfaceHolder) {
+        videoPlayerManager?.setDisplay(null)
     }
 
     override fun getView(): android.view.View = container
 
     override fun dispose() {
+        videoPlayerManager?.release()
         container.removeAllViews()
     }
 }
