@@ -16,7 +16,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
+  flutter_web_plugins:
+    sdk: flutter
   device_media_library:
     # When depending on this package from a real application you should use:
     #   device_media_library: ^x.y.z

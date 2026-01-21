@@ -1,38 +1,120 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
 
-  <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="device_media_library_example">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
-  <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>device_media_library_example</title>
+  <title>Device Media Library Example</title>
   <link rel="manifest" href="manifest.json">
+  
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: sans-serif;
+    }
+    
+    #drop-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      z-index: 9999;
+      display: none;
+    }
+    
+    #drop-overlay.active {
+      display: flex;
+    }
+    
+    #drop-message {
+      background: rgba(0, 0, 0, 0.8);
+      padding: 30px;
+      border-radius: 10px;
+      border: 3px dashed white;
+      text-align: center;
+    }
+  </style>
+  
+  <script>
+    // Поддержка drag-and-drop для web
+    document.addEventListener('DOMContentLoaded', function() {
+      const overlay = document.getElementById('drop-overlay');
+      
+      // Предотвращаем стандартное поведение для drag-and-drop
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        document.addEventListener(eventName, preventDefaults, false);
+      });
+      
+      function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      
+      // Подсветка при drag
+      ['dragenter', 'dragover'].forEach(eventName => {
+        document.addEventListener(eventName, highlight, false);
+      });
+      
+      ['dragleave', 'drop'].forEach(eventName => {
+        document.addEventListener(eventName, unhighlight, false);
+      });
+      
+      function highlight() {
+        overlay.classList.add('active');
+      }
+      
+      function unhighlight() {
+        overlay.classList.remove('active');
+      }
+      
+      // Обработка drop
+      document.addEventListener('drop', handleDrop, false);
+      
+      function handleDrop(e) {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        
+        // Отправляем файлы во Flutter
+        if (window.flutterChannel) {
+          const fileList = Array.from(files);
+          window.flutterChannel.postMessage({
+            'type': 'files_dropped',
+            'files': fileList
+          });
+        }
+        
+        unhighlight();
+      }
+    });
+    
+    // Канал для связи с Flutter
+    window.flutterChannel = null;
+  </script>
 </head>
 <body>
+  <div id="drop-overlay">
+    <div id="drop-message">Drop files here</div>
+  </div>
+  
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

@@ -120,4 +120,29 @@ abstract class DeviceMediaLibraryPlatform extends PlatformInterface {
   Future<void> resetVideo() {
     throw UnimplementedError('resetVideo() has not been implemented.');
   }
+
+  Future<List<Map<String, dynamic>>?> pickFiles({
+    bool multiple = true,
+    List<String>? allowedFileTypes,
+  }) {
+    throw UnimplementedError('pickFiles() has not been implemented.');
+  }
+
+  Future<List<Map<String, dynamic>>> pickFilesFromDrop(
+    List<dynamic> files,
+  ) {
+    throw UnimplementedError('pickFilesFromDrop() has not been implemented.');
+  }
+
+  Future<Uint8List> readWebFile(String fileId) {
+    throw UnimplementedError('readWebFile() has not been implemented.');
+  }
+
+  Future<String> getWebFileUrl(String fileId) {
+    throw UnimplementedError('getWebFileUrl() has not been implemented.');
+  }
+
+  void disposeWebFile(String fileId) {
+    throw UnimplementedError('disposeWebFile() has not been implemented.');
+  }
 }

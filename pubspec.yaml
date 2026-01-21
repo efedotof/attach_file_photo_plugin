@@ -1,7 +1,6 @@
 name: device_media_library
 description: "A Flutter plugin for accessing device media library."
 version: 0.0.1
-homepage:
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -11,6 +10,8 @@ dependencies:
   flutter:
     sdk: flutter
   plugin_platform_interface: ^2.1.8
+  flutter_web_plugins:
+    sdk: flutter
 
 dev_dependencies:
   flutter_test:
@@ -23,3 +24,8 @@ flutter:
       android:
         package: com.example.device_media_library
         pluginClass: DeviceMediaLibraryPlugin
+      ios:
+        pluginClass: DeviceMediaLibraryPlugin
+      web:
+        pluginClass: DeviceMediaLibraryWeb
+        fileName: device_media_library_web.dart

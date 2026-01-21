@@ -293,4 +293,45 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
     if (value is String) return int.tryParse(value) ?? 0;
     return 0;
   }
+
+  @override
+  Future<List<Map<String, dynamic>>?> pickFiles({
+    bool multiple = true,
+    List<String>? allowedFileTypes,
+  }) async {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return [];
+    }
+    throw UnimplementedError(
+        'pickFiles() has not been implemented for this platform');
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> pickFilesFromDrop(
+    List<dynamic> files,
+  ) async {
+    // На Android это не поддерживается, возвращаем пустой список
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return [];
+    }
+    throw UnimplementedError(
+        'pickFilesFromDrop() has not been implemented for this platform');
+  }
+
+  @override
+  Future<Uint8List> readWebFile(String fileId) async {
+    throw UnimplementedError(
+        'readWebFile() has not been implemented for this platform');
+  }
+
+  @override
+  Future<String> getWebFileUrl(String fileId) async {
+    throw UnimplementedError(
+        'getWebFileUrl() has not been implemented for this platform');
+  }
+
+  @override
+  void disposeWebFile(String fileId) {
+    // Ничего не делаем на Android
+  }
 }

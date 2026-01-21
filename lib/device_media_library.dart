@@ -130,4 +130,32 @@ class DeviceMediaLibrary {
   Stream<Map<String, dynamic>> get videoEvents {
     return DeviceMediaLibraryPlatform.instance.videoEvents;
   }
+
+  Future<List<Map<String, dynamic>>?> pickFiles({
+    bool multiple = true,
+    List<String>? allowedFileTypes,
+  }) {
+    return DeviceMediaLibraryPlatform.instance.pickFiles(
+      multiple: multiple,
+      allowedFileTypes: allowedFileTypes,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> pickFilesFromDrop(
+    List<dynamic> files,
+  ) {
+    return DeviceMediaLibraryPlatform.instance.pickFilesFromDrop(files);
+  }
+
+  Future<Uint8List> readWebFile(String fileId) {
+    return DeviceMediaLibraryPlatform.instance.readWebFile(fileId);
+  }
+
+  Future<String> getWebFileUrl(String fileId) {
+    return DeviceMediaLibraryPlatform.instance.getWebFileUrl(fileId);
+  }
+
+  void disposeWebFile(String fileId) {
+    DeviceMediaLibraryPlatform.instance.disposeWebFile(fileId);
+  }
 }
