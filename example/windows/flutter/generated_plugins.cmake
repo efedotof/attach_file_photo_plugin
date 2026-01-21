@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  device_media_library
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

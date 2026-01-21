@@ -1,3 +1,6 @@
+// ignore_for_file: unused_import
+
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:typed_data';
@@ -5,10 +8,11 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:device_media_library/device_media_library.dart';
 
-// Для web используем dart:html
-import 'dart:html' as html;
+import 'package:device_media_library/device_media_library_web.dart'
+    if (dart.library.io) 'package:device_media_library/device_media_library_windows.dart';
 
 void main() {
+  DeviceMediaLibrary.initialize();
   runApp(const MyApp());
 }
 
@@ -33,9 +37,6 @@ class _MyAppState extends State<MyApp> {
   MediaType _selectedMediaType = MediaType.all;
   String? _selectedAlbumId;
   String? _selectedAlbumName;
-  bool _isDragging = false;
-
-  int _dragCounter = 0;
 
   int _currentOffset = 0;
   static const int _pageSize = 30;
@@ -44,96 +45,14 @@ class _MyAppState extends State<MyApp> {
   final ScrollController _scrollController = ScrollController();
   final Map<String, Completer<Uint8List?>> _thumbnailCompleters = {};
 
+  bool _isDragging = false;
+
   @override
   void initState() {
     super.initState();
+    DeviceMediaLibrary.ensureInitialized();
     _checkPermissionAndLoadData();
     _setupScrollListener();
-
-    if (kIsWeb) {
-      _setupWebDrop();
-    }
-  }
-
-  void _setupWebDrop() {
-    // Используем dynamic для избежания проблем с типами
-    html.document.addEventListener('dragover', (event) {
-      final e = event;
-      e.preventDefault();
-
-      // Используем as dynamic для доступа к свойствам DragEvent
-      final dynamic dragEvent = e;
-      if (dragEvent.dataTransfer != null) {
-        dragEvent.dataTransfer.dropEffect = 'copy';
-      }
-    });
-
-    html.document.addEventListener('dragenter', (event) {
-      event.preventDefault();
-      _dragCounter++;
-      if (_dragCounter == 1) {
-        setState(() {
-          _isDragging = true;
-        });
-      }
-    });
-
-    html.document.addEventListener('dragleave', (event) {
-      event.preventDefault();
-      _dragCounter--;
-      if (_dragCounter == 0) {
-        setState(() {
-          _isDragging = false;
-        });
-      }
-    });
-
-    html.document.addEventListener('drop', (event) async {
-      event.preventDefault();
-      _dragCounter = 0;
-      setState(() {
-        _isDragging = false;
-      });
-
-      final dynamic dragEvent = event;
-      final files = dragEvent.dataTransfer?.files;
-
-      if (files == null || files.isEmpty) return;
-
-      debugPrint('WEB DROP: ${files.length} files');
-
-      try {
-        final fileList = <dynamic>[];
-        for (var i = 0; i < files.length; i++) {
-          fileList.add(files[i]);
-        }
-
-        final result = await _mediaLibrary.pickFilesFromDrop(fileList);
-
-        if (result.isNotEmpty) {
-          setState(() {
-            _mediaList.addAll(result);
-          });
-          _preloadThumbnails(result);
-        }
-      } catch (e) {
-        debugPrint('Error processing dropped files: $e');
-      }
-    }, true);
-
-    html.document.body?.style.overflow = 'hidden';
-
-    final style = html.document.createElement('style') as html.StyleElement;
-    style.text = '''
-      * {
-        -webkit-user-drag: none;
-        user-drag: none;
-      }
-      .drop-zone {
-        pointer-events: none;
-      }
-    ''';
-    html.document.head?.append(style);
   }
 
   void _setupScrollListener() {
@@ -287,6 +206,89 @@ class _MyAppState extends State<MyApp> {
       setState(() {
         _isLoading = false;
         _isLoadingMore = false;
+      });
+    }
+  }
+
+  Future<void> _pickFilesOnWindows() async {
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      debugPrint('WINDOWS: opening file picker...');
+
+      final newMedia = await _mediaLibrary.pickFiles(
+        multiple: true,
+        allowedFileTypes: ['*'],
+      );
+
+      debugPrint('WINDOWS: picked ${newMedia?.length ?? 0} files');
+
+      if (newMedia != null && newMedia.isNotEmpty) {
+        for (final file in newMedia) {
+          debugPrint(
+            'WINDOWS FILE -> name=${file['name']} '
+            'size=${file['size']} '
+            'type=${file['type']} '
+            'mime=${file['mimeType']} '
+            'id=${file['id']}',
+          );
+        }
+
+        setState(() {
+          _mediaList.clear();
+          _thumbnailsCache.clear();
+          _thumbnailCompleters.clear();
+          _mediaList.addAll(newMedia);
+          _hasMoreItems = false;
+        });
+
+        _preloadThumbnails(newMedia);
+      }
+    } catch (e) {
+      debugPrint('Error picking files on Windows: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _processDroppedFiles(List<dynamic> droppedFiles) async {
+    if (droppedFiles.isEmpty) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      debugPrint('Processing ${droppedFiles.length} dropped files');
+
+      final processedMedia = await _mediaLibrary.pickFilesFromDrop(
+        droppedFiles,
+      );
+
+      if (processedMedia.isNotEmpty) {
+        setState(() {
+          _mediaList.clear();
+          _thumbnailsCache.clear();
+          _thumbnailCompleters.clear();
+          _mediaList.addAll(processedMedia);
+          _hasMoreItems = false;
+        });
+
+        _preloadThumbnails(processedMedia);
+
+        debugPrint('Successfully processed ${processedMedia.length} files');
+      }
+    } catch (e) {
+      debugPrint('Error processing dropped files: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
       });
     }
   }
@@ -464,6 +466,85 @@ class _MyAppState extends State<MyApp> {
     super.dispose();
   }
 
+  Widget _buildDragTarget() {
+    return DragTarget<List<String>>(
+      onWillAcceptWithDetails: (details) {
+        setState(() {
+          _isDragging = true;
+        });
+        return true;
+      },
+      onAcceptWithDetails: (details) async {
+        setState(() {
+          _isDragging = false;
+        });
+
+        final List<String> files = details.data;
+
+        await _processDroppedFiles(files);
+      },
+      onLeave: (data) {
+        setState(() {
+          _isDragging = false;
+        });
+      },
+      builder: (context, candidateData, rejectedData) {
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          decoration: BoxDecoration(
+            color: _isDragging
+                ? Colors.blue.withValues(alpha: 0.1)
+                : Colors.transparent,
+            border: _isDragging
+                ? Border.all(color: Colors.blue, width: 2)
+                : null,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Stack(
+            children: [
+              _buildBodyContent(),
+              if (_isDragging)
+                Positioned.fill(
+                  child: Container(
+                    color: Colors.blue.withValues(alpha: 0.3),
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.cloud_upload,
+                            size: 64,
+                            color: Colors.blue,
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Drop files here',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Release to add ${candidateData.length} files',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildBodyContent() {
     return _isLoading && !kIsWeb && _mediaList.isEmpty
         ? Center(
@@ -561,41 +642,47 @@ class _MyAppState extends State<MyApp> {
               ],
             ),
           ),
-        if (kIsWeb && _mediaList.isEmpty)
+        if ((!kIsWeb && _mediaList.isEmpty) || (kIsWeb && _mediaList.isEmpty))
           Expanded(
             child: Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.cloud_upload, size: 64, color: Colors.grey),
+                  Icon(
+                    kIsWeb ? Icons.cloud_upload : Icons.photo_library,
+                    size: 64,
+                    color: Colors.grey,
+                  ),
                   const SizedBox(height: 20),
-                  const Text(
-                    'Drop files here or click the button',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  Text(
+                    kIsWeb
+                        ? 'Click the button to select files'
+                        : 'No media found or dropped',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 10),
-                  const Text(
-                    'Drag and drop files anywhere on the page',
+                  Text(
+                    kIsWeb
+                        ? 'Select image or video files from your device'
+                        : 'Use the file picker or drag & drop files here',
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 20),
-                  ElevatedButton(
-                    onPressed: _pickFilesOnWeb,
-                    child: const Text('Select Files'),
-                  ),
+                  if (kIsWeb)
+                    ElevatedButton(
+                      onPressed: _pickFilesOnWeb,
+                      child: const Text('Select Files'),
+                    ),
+                  if (!kIsWeb)
+                    ElevatedButton(
+                      onPressed: _pickFilesOnWindows,
+                      child: const Text('Select Files'),
+                    ),
                 ],
               ),
-            ),
-          )
-        else if (_mediaList.isEmpty)
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.photo_library, size: 64, color: Colors.grey),
-                const SizedBox(height: 20),
-                const Text('No media found'),
-              ],
             ),
           )
         else
@@ -760,31 +847,30 @@ class _MyAppState extends State<MyApp> {
                             ),
                           ),
                         ),
-                        if (kIsWeb)
-                          Positioned(
-                            bottom: 4,
-                            left: 4,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 4,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.black54,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                fileName.length > 10
-                                    ? '${fileName.substring(0, 10)}...'
-                                    : fileName,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 8,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                        Positioned(
+                          bottom: 4,
+                          left: 4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              fileName.length > 10
+                                  ? '${fileName.substring(0, 10)}...'
+                                  : fileName,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
                           ),
+                        ),
                       ],
                     ),
                   );
@@ -842,50 +928,17 @@ class _MyAppState extends State<MyApp> {
                   ),
                 ),
               ),
-            if (kIsWeb)
-              IconButton(
-                icon: const Icon(Icons.add_photo_alternate),
-                onPressed: _pickFilesOnWeb,
-                tooltip: 'Pick files',
-              ),
+            IconButton(
+              icon: const Icon(Icons.add_photo_alternate),
+              onPressed: kIsWeb ? _pickFilesOnWeb : _pickFilesOnWindows,
+              tooltip: 'Pick files',
+            ),
           ],
         ),
-        body: Stack(
-          children: [
-            _buildBodyContent(),
-            if (kIsWeb && _isDragging)
-              Positioned.fill(
-                child: Container(
-                  color: Color.fromRGBO(0, 0, 0, 0.7),
-                  child: const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.cloud_upload, size: 72, color: Colors.white),
-                        SizedBox(height: 20),
-                        Text(
-                          'Drop files here',
-                          style: TextStyle(
-                            fontSize: 32,
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        SizedBox(height: 10),
-                        Text(
-                          'Release to upload files',
-                          style: TextStyle(fontSize: 16, color: Colors.white70),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-        floatingActionButton: kIsWeb && _mediaList.isNotEmpty
+        body: _buildDragTarget(),
+        floatingActionButton: _mediaList.isNotEmpty
             ? FloatingActionButton(
-                onPressed: _pickFilesOnWeb,
+                onPressed: kIsWeb ? _pickFilesOnWeb : _pickFilesOnWindows,
                 tooltip: 'Add more files',
                 child: const Icon(Icons.add),
               )

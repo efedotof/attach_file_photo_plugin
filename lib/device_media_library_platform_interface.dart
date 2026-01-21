@@ -1,21 +1,36 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
-import 'device_media_library_method_channel.dart';
 
 abstract class DeviceMediaLibraryPlatform extends PlatformInterface {
   DeviceMediaLibraryPlatform() : super(token: _token);
 
   static final Object _token = Object();
-  static DeviceMediaLibraryPlatform _instance =
-      MethodChannelDeviceMediaLibrary();
+  static DeviceMediaLibraryPlatform? _instance;
 
-  static DeviceMediaLibraryPlatform get instance => _instance;
+  static bool get isInitialized => _instance != null;
+
+  static DeviceMediaLibraryPlatform get instance {
+    if (_instance == null) {
+      throw Exception(
+        'DeviceMediaLibrary has not been initialized. '
+        'Please call DeviceMediaLibrary.initialize()',
+      );
+    }
+    return _instance!;
+  }
 
   static set instance(DeviceMediaLibraryPlatform instance) {
     PlatformInterface.verifyToken(instance, _token);
     _instance = instance;
+  }
+
+  static void initialize([DeviceMediaLibraryPlatform? platform]) {
+    if (platform != null) {
+      instance = platform;
+    } else {}
   }
 
   Future<String?> getPlatformVersion() {
@@ -30,18 +45,27 @@ abstract class DeviceMediaLibraryPlatform extends PlatformInterface {
     throw UnimplementedError('requestPermission() has not been implemented.');
   }
 
-  Future<List<Map<String, dynamic>>?> getImages(
-      {int? limit, int? offset, String? albumId}) {
+  Future<List<Map<String, dynamic>>?> getImages({
+    int? limit,
+    int? offset,
+    String? albumId,
+  }) {
     throw UnimplementedError('getImages() has not been implemented.');
   }
 
-  Future<List<Map<String, dynamic>>?> getVideos(
-      {int? limit, int? offset, String? albumId}) {
+  Future<List<Map<String, dynamic>>?> getVideos({
+    int? limit,
+    int? offset,
+    String? albumId,
+  }) {
     throw UnimplementedError('getVideos() has not been implemented.');
   }
 
-  Future<List<Map<String, dynamic>>?> getAllMedia(
-      {int? limit, int? offset, String? albumId}) {
+  Future<List<Map<String, dynamic>>?> getAllMedia({
+    int? limit,
+    int? offset,
+    String? albumId,
+  }) {
     throw UnimplementedError('getAllMedia() has not been implemented.');
   }
 
@@ -49,12 +73,15 @@ abstract class DeviceMediaLibraryPlatform extends PlatformInterface {
     throw UnimplementedError('getAlbums() has not been implemented.');
   }
 
-  Future<List<Map<String, dynamic>>?> getMediaFromAlbum(
-      {required String albumId, int? limit, int? offset}) {
+  Future<List<Map<String, dynamic>>?> getMediaFromAlbum({
+    required String albumId,
+    int? limit,
+    int? offset,
+  }) {
     throw UnimplementedError('getMediaFromAlbum() has not been implemented.');
   }
 
-  Future<Uint8List?> getFileBytes(String uri) async {
+  Future<Uint8List?> getFileBytes(String uri) {
     throw UnimplementedError('getFileBytes() has not been implemented.');
   }
 
@@ -101,14 +128,6 @@ abstract class DeviceMediaLibraryPlatform extends PlatformInterface {
     throw UnimplementedError('getVideoDuration() has not been implemented.');
   }
 
-  Future<void> disposeVideo() {
-    throw UnimplementedError('disposeVideo() has not been implemented.');
-  }
-
-  Stream<Map<String, dynamic>> get videoEvents {
-    throw UnimplementedError('videoEvents getter has not been implemented.');
-  }
-
   Future<double?> getCurrentPosition() {
     throw UnimplementedError('getCurrentPosition() has not been implemented.');
   }
@@ -119,6 +138,14 @@ abstract class DeviceMediaLibraryPlatform extends PlatformInterface {
 
   Future<void> resetVideo() {
     throw UnimplementedError('resetVideo() has not been implemented.');
+  }
+
+  Future<void> disposeVideo() {
+    throw UnimplementedError('disposeVideo() has not been implemented.');
+  }
+
+  Stream<Map<String, dynamic>> get videoEvents {
+    throw UnimplementedError('videoEvents getter has not been implemented.');
   }
 
   Future<List<Map<String, dynamic>>?> pickFiles({

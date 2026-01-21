@@ -20,14 +20,16 @@ set(PLUGIN_NAME "device_media_library_plugin")
 list(APPEND PLUGIN_SOURCES
   "device_media_library_plugin.cpp"
   "device_media_library_plugin.h"
+  "device_media_library_windows.cpp"
+  "device_media_library_plugin_c_api.cpp"
 )
 
 # Define the plugin library target. Its name must not be changed (see comment
 # on PLUGIN_NAME above).
 add_library(${PLUGIN_NAME} SHARED
-  "include/device_media_library/device_media_library_plugin_c_api.h"
-  "device_media_library_plugin_c_api.cpp"
   ${PLUGIN_SOURCES}
+  "include/device_media_library/device_media_library_plugin_c_api.h"
+  "include/device_media_library/device_media_library_windows.h"
 )
 
 # Apply a standard set of build settings that are configured in the
@@ -82,7 +84,8 @@ FetchContent_MakeAvailable(googletest)
 # directly into the test binary rather than using the DLL.
 add_executable(${TEST_RUNNER}
   test/device_media_library_plugin_test.cpp
-  ${PLUGIN_SOURCES}
+  "device_media_library_plugin.cpp"
+  "device_media_library_plugin.h"
 )
 apply_standard_settings(${TEST_RUNNER})
 target_include_directories(${TEST_RUNNER} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")

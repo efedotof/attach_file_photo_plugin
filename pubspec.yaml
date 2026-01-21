@@ -29,3 +29,6 @@ flutter:
       web:
         pluginClass: DeviceMediaLibraryWeb
         fileName: device_media_library_web.dart
+      windows:
+        pluginClass: DeviceMediaLibraryWindows
+        fileName: device_media_library_windows.dart

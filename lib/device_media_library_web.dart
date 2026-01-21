@@ -1,5 +1,6 @@
+// ignore_for_file: deprecated_member_use
+
 import 'dart:async';
-// ignore: deprecated_member_use
 import 'dart:html' as html;
 import 'dart:typed_data';
 import 'package:flutter_web_plugins/flutter_web_plugins.dart';
@@ -356,7 +357,7 @@ class DeviceMediaLibraryWeb extends DeviceMediaLibraryPlatform {
 
   @override
   Future<bool> initializeVideo({
-    String? videoPath,
+    required String videoPath,
     String? videoUri,
     bool autoPlay = false,
     double volume = 1.0,

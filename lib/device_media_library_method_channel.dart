@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+
 import 'device_media_library_platform_interface.dart';
 
 class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
@@ -29,6 +30,82 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
   Future<bool> requestPermission() async {
     final bool? result = await _methodChannel.invokeMethod('requestPermission');
     return result ?? false;
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>?> pickFiles({
+    bool multiple = true,
+    List<String>? allowedFileTypes,
+  }) async {
+    try {
+      final result = await _methodChannel.invokeMethod('pickFiles', {
+        'multiple': multiple,
+        'allowedFileTypes': allowedFileTypes ?? ['*'],
+      });
+
+      if (result is List) {
+        return List<Map<String, dynamic>>.from(result);
+      }
+      return [];
+    } catch (e) {
+      debugPrint('Error picking files: $e');
+      return [];
+    }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> pickFilesFromDrop(
+    List<dynamic> files,
+  ) async {
+    try {
+      final result =
+          await _methodChannel.invokeMethod('pickFilesFromDrop', files);
+
+      if (result is List) {
+        return List<Map<String, dynamic>>.from(result);
+      }
+      return [];
+    } catch (e) {
+      debugPrint('Error processing drop files: $e');
+      return [];
+    }
+  }
+
+  @override
+  Future<Uint8List> readWebFile(String fileId) async {
+    try {
+      final result =
+          await _methodChannel.invokeMethod<Uint8List>('readWebFile', {
+        'fileId': fileId,
+      });
+      return result ?? Uint8List(0);
+    } catch (e) {
+      debugPrint('Error reading web file: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<String> getWebFileUrl(String fileId) async {
+    try {
+      final result =
+          await _methodChannel.invokeMethod<String>('getWebFileUrl', {
+        'fileId': fileId,
+      });
+      return result ?? '';
+    } catch (e) {
+      debugPrint('Error getting web file URL: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  void disposeWebFile(String fileId) {
+    try {
+      _methodChannel.invokeMethod('disposeWebFile', {'fileId': fileId});
+    } catch (e) {
+      debugPrint('Error disposing web file: $e');
+    }
   }
 
   @override
@@ -220,16 +297,14 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
     return result;
   }
 
-  // ===================== Video Methods =====================
-
   @override
   Future<bool> initializeVideo({
-    String? videoPath,
+    required String videoPath,
     String? videoUri,
     bool autoPlay = false,
     double volume = 1.0,
   }) async {
-    if (videoPath == null && videoUri == null) {
+    if (videoPath.isEmpty && videoUri == null) {
       throw ArgumentError('Either videoPath or videoUri must be provided');
     }
 
@@ -292,46 +367,5 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
     if (value is double) return value.toInt();
     if (value is String) return int.tryParse(value) ?? 0;
     return 0;
-  }
-
-  @override
-  Future<List<Map<String, dynamic>>?> pickFiles({
-    bool multiple = true,
-    List<String>? allowedFileTypes,
-  }) async {
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return [];
-    }
-    throw UnimplementedError(
-        'pickFiles() has not been implemented for this platform');
-  }
-
-  @override
-  Future<List<Map<String, dynamic>>> pickFilesFromDrop(
-    List<dynamic> files,
-  ) async {
-    // На Android это не поддерживается, возвращаем пустой список
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return [];
-    }
-    throw UnimplementedError(
-        'pickFilesFromDrop() has not been implemented for this platform');
-  }
-
-  @override
-  Future<Uint8List> readWebFile(String fileId) async {
-    throw UnimplementedError(
-        'readWebFile() has not been implemented for this platform');
-  }
-
-  @override
-  Future<String> getWebFileUrl(String fileId) async {
-    throw UnimplementedError(
-        'getWebFileUrl() has not been implemented for this platform');
-  }
-
-  @override
-  void disposeWebFile(String fileId) {
-    // Ничего не делаем на Android
   }
 }
