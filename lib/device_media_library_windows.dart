@@ -471,4 +471,14 @@ class DeviceMediaLibraryWindows extends DeviceMediaLibraryPlatform {
     if (value is String) return int.tryParse(value) ?? 0;
     return 0;
   }
+
+  @override
+  Future<String?> getFilePath(String uri) async {
+    if (uri.startsWith('file://')) {
+      String path = uri.replaceFirst(RegExp(r'^file:///?'), '');
+      path = Uri.decodeComponent(path);
+      return path;
+    }
+    return null;
+  }
 }

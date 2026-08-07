@@ -145,6 +145,19 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                 "readFileByUri" ->
                     fileReader.readFileByUri(call, result)
 
+                "getFilePath" -> {
+                    val uriString = call.argument<String>("uri")
+                    if (uriString.isNullOrEmpty()) {
+                        result.error("INVALID_ARGUMENT", "URI is required", null)
+                        return
+                    }
+                    val filePath = getFilePath(uriString)
+                    if (filePath != null) {
+                        result.success(filePath)
+                    } else {
+                        result.error("FILE_ERROR", "Could not resolve file path", null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
@@ -241,6 +254,28 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
 
     fun attachSurface(holder: android.view.SurfaceHolder?) {
         videoPlayerManager?.setDisplay(holder)
+    }
+
+    private fun getFilePath(uriString: String): String? {
+        val uri = Uri.parse(uriString)
+        if (uri.scheme == "file") {
+            return uri.path
+        }
+        if (uri.scheme == "content") {
+            val projection = arrayOf(MediaStore.MediaColumns.DATA)
+            val cursor = context.contentResolver.query(uri, projection, null, null, null)
+            cursor?.use {
+                val columnIndex = it.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA)
+                if (it.moveToFirst()) {
+                    return it.getString(columnIndex)
+                }
+            }
+            try {
+                context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                }
+            } catch (e: Exception) { }
+        }
+        return null
     }
 
 

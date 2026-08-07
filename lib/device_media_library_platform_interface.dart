@@ -172,4 +172,8 @@ abstract class DeviceMediaLibraryPlatform extends PlatformInterface {
   void disposeWebFile(String fileId) {
     throw UnimplementedError('disposeWebFile() has not been implemented.');
   }
+
+  Future<String?> getFilePath(String uri) {
+    throw UnimplementedError('getFilePath() has not been implemented.');
+  }
 }

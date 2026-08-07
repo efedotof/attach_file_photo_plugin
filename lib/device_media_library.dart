@@ -219,4 +219,9 @@ class DeviceMediaLibrary {
     ensureInitialized();
     DeviceMediaLibraryPlatform.instance.disposeWebFile(fileId);
   }
+
+  Future<String?> getFilePath(String uri) {
+    ensureInitialized();
+    return DeviceMediaLibraryPlatform.instance.getFilePath(uri);
+  }
 }

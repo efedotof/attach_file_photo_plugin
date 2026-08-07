@@ -368,4 +368,16 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
     if (value is String) return int.tryParse(value) ?? 0;
     return 0;
   }
+
+  @override
+  Future<String?> getFilePath(String uri) async {
+    try {
+      final result = await _methodChannel
+          .invokeMethod<String>('getFilePath', {'uri': uri});
+      return result;
+    } catch (e) {
+      debugPrint('Error getting file path: $e');
+      return null;
+    }
+  }
 }
