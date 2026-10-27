@@ -1,0 +1,57 @@
+{
+  "name": "Flutter Plugin Dev (attach_file_photo_plugin)",
+  "image": "ghcr.io/cirruslabs/flutter:stable",
+  "overrideCommand": true,
+  "postCreateCommand": "yes | /opt/android-sdk-linux/cmdline-tools/latest/bin/sdkmanager --licenses && /opt/android-sdk-linux/cmdline-tools/latest/bin/sdkmanager 'platforms;android-36' 'build-tools;36.0.0' && sudo apt-get update && sudo apt-get install -y scrcpy ninja-build cmake && flutter pub get",
+  "containerEnv": {
+    "ANDROID_HOME": "/opt/android-sdk-linux",
+    "ANDROID_SDK_ROOT": "/opt/android-sdk-linux",
+    "XDG_RUNTIME_DIR": "/tmp",
+    "FLUTTER_ROOT": "/sdks/flutter"
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {
+      "installDirectlyFromGitHubRelease": true,
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers-extra/features/kotlin-sdkman:2": {
+      "version": "latest",
+      "jdkVersion": "17",
+      "jdkDistro": "ms"
+    }
+  },
+  "runArgs": [
+    "--network=host",
+    "--privileged",
+    "-v", "/dev/bus/usb:/dev/bus/usb",
+    "-v", "/tmp/.X11-unix:/tmp/.X11-unix",
+    "-e", "DISPLAY=${localEnv:DISPLAY}",
+    "-e", "WAYLAND_DISPLAY=${localEnv:WAYLAND_DISPLAY}",
+    "-v", "/run/user/1000/wayland-0:/tmp/wayland-0"
+  ],
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "scrcpy.path": "/usr/bin/scrcpy",
+        "scrcpy.adbPath": "/opt/android-sdk-linux/platform-tools/adb",
+        "dart.flutterSdkPath": "/sdks/flutter",
+        "dart.sdkPath": "/sdks/flutter/bin/cache/dart-sdk"
+      },
+      "extensions": [
+        "Dart-Code.dart-code",
+        "Dart-Code.flutter",
+        "eamodio.gitlens",
+        "mhutchie.git-graph",
+        "streetsidesoftware.code-spell-checker",
+        "streetsidesoftware.code-spell-checker-russian",
+        "PKief.material-icon-theme",
+        "alexisvt.flutter-snippets",
+        "felixangelov.bloc",
+        "nash.awesome-flutter-snippets",
+        "pflannery.vscode-versionlens",
+        "GitHub.vscode-github-actions",
+        "izantech.scrcpy-vscode"
+      ]
+    }
+  }
+}
