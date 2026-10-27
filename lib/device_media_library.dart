@@ -224,4 +224,52 @@ class DeviceMediaLibrary {
     ensureInitialized();
     return DeviceMediaLibraryPlatform.instance.getFilePath(uri);
   }
+
+    Future<List<Map<String, dynamic>>?> getAudio({
+    int? limit,
+    int? offset,
+  }) {
+    ensureInitialized();
+    return DeviceMediaLibraryPlatform.instance.getAudio(
+      limit: limit,
+      offset: offset,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>?> getDownloads({
+    int? limit,
+    int? offset,
+    bool recursive = true,
+  }) {
+    ensureInitialized();
+    return DeviceMediaLibraryPlatform.instance.getDownloads(
+      limit: limit,
+      offset: offset,
+      recursive: recursive,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>?> getDocuments({
+    int? limit,
+    int? offset,
+    bool recursive = true,
+  }) {
+    ensureInitialized();
+    return DeviceMediaLibraryPlatform.instance.getDocuments(
+      limit: limit,
+      offset: offset,
+      recursive: recursive,
+    );
+  }
+
+  Future<bool> checkAllFilesPermission() {
+    ensureInitialized();
+    return DeviceMediaLibraryPlatform.instance.checkAllFilesPermission();
+  }
+
+  Future<bool> requestAllFilesPermission() {
+    ensureInitialized();
+    return DeviceMediaLibraryPlatform.instance.requestAllFilesPermission();
+  }
+
 }

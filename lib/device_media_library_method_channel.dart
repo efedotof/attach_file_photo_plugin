@@ -380,4 +380,120 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
       return null;
     }
   }
+
+  @override
+  Future<List<Map<String, dynamic>>?> getAudio({
+    int? limit,
+    int? offset,
+  }) async {
+    final List<dynamic>? result =
+        await _methodChannel.invokeMethod('getAudio', {
+      'limit': limit,
+      'offset': offset,
+    });
+
+    if (result == null) return null;
+
+    return result.map<Map<String, dynamic>>((item) {
+      final map = Map<String, dynamic>.from(item as Map<dynamic, dynamic>);
+      return {
+        'id': map['id']?.toString() ?? '',
+        'name': map['name']?.toString() ?? '',
+        'uri': map['uri']?.toString() ?? '',
+        'dateAdded': _parseInt(map['dateAdded']),
+        'size': _parseInt(map['size']),
+        'duration': _parseInt(map['duration']),
+        'mimeType': map['mimeType']?.toString() ?? '',
+        'artist': map['artist']?.toString() ?? '',
+        'album': map['album']?.toString() ?? '',
+        'albumId': map['albumId']?.toString() ?? '',
+        'albumName': map['albumName']?.toString() ?? '',
+        'type': map['type']?.toString() ?? 'audio',
+        'width': _parseInt(map['width']),
+        'height': _parseInt(map['height']),
+      };
+    }).toList();
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>?> getDownloads({
+    int? limit,
+    int? offset,
+    bool recursive = true,
+  }) async {
+    final List<dynamic>? result =
+        await _methodChannel.invokeMethod('getDownloads', {
+      'limit': limit,
+      'offset': offset,
+      'recursive': recursive,
+    });
+
+    if (result == null) return null;
+
+    return result.map<Map<String, dynamic>>((item) {
+      final map = Map<String, dynamic>.from(item as Map<dynamic, dynamic>);
+      return {
+        'id': map['id']?.toString() ?? '',
+        'name': map['name']?.toString() ?? '',
+        'uri': map['uri']?.toString() ?? '',
+        'path': map['path']?.toString() ?? '',
+        'dateAdded': _parseInt(map['dateAdded']),
+        'size': _parseInt(map['size']),
+        'mimeType': map['mimeType']?.toString() ?? '',
+        'type': map['type']?.toString() ?? 'file',
+        'category': map['category']?.toString() ?? 'download',
+        'albumName': map['albumName']?.toString() ?? 'Downloads',
+        'width': _parseInt(map['width']),
+        'height': _parseInt(map['height']),
+      };
+    }).toList();
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>?> getDocuments({
+    int? limit,
+    int? offset,
+    bool recursive = true,
+  }) async {
+    final List<dynamic>? result =
+        await _methodChannel.invokeMethod('getDocuments', {
+      'limit': limit,
+      'offset': offset,
+      'recursive': recursive,
+    });
+
+    if (result == null) return null;
+
+    return result.map<Map<String, dynamic>>((item) {
+      final map = Map<String, dynamic>.from(item as Map<dynamic, dynamic>);
+      return {
+        'id': map['id']?.toString() ?? '',
+        'name': map['name']?.toString() ?? '',
+        'uri': map['uri']?.toString() ?? '',
+        'path': map['path']?.toString() ?? '',
+        'dateAdded': _parseInt(map['dateAdded']),
+        'size': _parseInt(map['size']),
+        'mimeType': map['mimeType']?.toString() ?? '',
+        'type': map['type']?.toString() ?? 'file',
+        'category': map['category']?.toString() ?? 'document',
+        'albumName': map['albumName']?.toString() ?? 'Documents',
+        'width': _parseInt(map['width']),
+        'height': _parseInt(map['height']),
+      };
+    }).toList();
+  }
+
+  @override
+  Future<bool> checkAllFilesPermission() async {
+    final bool? result =
+        await _methodChannel.invokeMethod('checkAllFilesPermission');
+    return result ?? false;
+  }
+
+  @override
+  Future<bool> requestAllFilesPermission() async {
+    final bool? result =
+        await _methodChannel.invokeMethod('requestAllFilesPermission');
+    return result ?? false;
+  }
 }

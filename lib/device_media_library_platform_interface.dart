@@ -176,4 +176,37 @@ abstract class DeviceMediaLibraryPlatform extends PlatformInterface {
   Future<String?> getFilePath(String uri) {
     throw UnimplementedError('getFilePath() has not been implemented.');
   }
+
+    Future<List<Map<String, dynamic>>?> getAudio({
+    int? limit,
+    int? offset,
+  }) {
+    throw UnimplementedError('getAudio() has not been implemented.');
+  }
+
+  Future<List<Map<String, dynamic>>?> getDownloads({
+    int? limit,
+    int? offset,
+    bool recursive = true,
+  }) {
+    throw UnimplementedError('getDownloads() has not been implemented.');
+  }
+
+  Future<List<Map<String, dynamic>>?> getDocuments({
+    int? limit,
+    int? offset,
+    bool recursive = true,
+  }) {
+    throw UnimplementedError('getDocuments() has not been implemented.');
+  }
+
+  Future<bool> checkAllFilesPermission() {
+    throw UnimplementedError('checkAllFilesPermission() has not been implemented.');
+  }
+
+  Future<bool> requestAllFilesPermission() {
+    throw UnimplementedError('requestAllFilesPermission() has not been implemented.');
+  }
+
+
 }

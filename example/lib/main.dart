@@ -1,22 +1,17 @@
-// ignore_for_file: unused_import
-
-import 'dart:io';
-import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:device_media_library/device_media_library.dart';
-
-import 'package:device_media_library/device_media_library_web.dart'
-    if (dart.library.io) 'package:device_media_library/device_media_library_windows.dart';
 
 void main() {
   DeviceMediaLibrary.initialize();
   runApp(const MyApp());
 }
 
-enum MediaType { all, images, videos }
+enum LibrarySection { media, audio, downloads, documents }
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
@@ -25,519 +20,318 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
-  final DeviceMediaLibrary _mediaLibrary = DeviceMediaLibrary();
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  final DeviceMediaLibrary _lib = DeviceMediaLibrary();
+
+  LibrarySection _section = LibrarySection.media;
+
+  bool _hasBasicPermission = false;
+  bool _hasAllFilesPermission = false;
+
   final List<Map<String, dynamic>> _mediaList = [];
-  final Map<String, Uint8List> _thumbnailsCache = {};
-  List<Map<String, dynamic>>? _albums;
-  bool _hasPermission = false;
-  bool _isLoading = true;
-  bool _isLoadingMore = false;
-  bool _isRequestingPermission = false;
-  MediaType _selectedMediaType = MediaType.all;
-  String? _selectedAlbumId;
-  String? _selectedAlbumName;
+  final List<Map<String, dynamic>> _audioList = [];
+  final List<Map<String, dynamic>> _downloadsList = [];
+  final List<Map<String, dynamic>> _documentsList = [];
 
-  int _currentOffset = 0;
-  static const int _pageSize = 30;
-  bool _hasMoreItems = true;
+  final Map<String, Uint8List> _thumbs = {};
+  final Map<String, Completer<Uint8List?>> _thumbCompleters = {};
 
-  final ScrollController _scrollController = ScrollController();
-  final Map<String, Completer<Uint8List?>> _thumbnailCompleters = {};
-
-  bool _isDragging = false;
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    DeviceMediaLibrary.ensureInitialized();
-    _checkPermissionAndLoadData();
-    _setupScrollListener();
-  }
-
-  void _setupScrollListener() {
-    _scrollController.addListener(() {
-      if (_scrollController.position.pixels >=
-          _scrollController.position.maxScrollExtent - 200) {
-        _loadMoreMedia();
-      }
-    });
-  }
-
-  Future<void> _checkPermissionAndLoadData() async {
-    try {
-      bool hasPermission = kIsWeb
-          ? true
-          : await _mediaLibrary.checkPermission();
-
-      if (!hasPermission && !_isRequestingPermission && !kIsWeb) {
-        setState(() {
-          _isRequestingPermission = true;
-        });
-
-        hasPermission = await _mediaLibrary.requestPermission();
-
-        setState(() {
-          _isRequestingPermission = false;
-        });
-      }
-
-      setState(() {
-        _hasPermission = hasPermission;
-      });
-
-      if (hasPermission) {
-        if (!kIsWeb) {
-          await _loadAlbums();
-          await _loadMedia(reset: true);
-        } else {
-          setState(() {
-            _isLoading = false;
-          });
-        }
-      }
-    } catch (e) {
-      debugPrint('Error checking permission: $e');
-    } finally {
-      if (!kIsWeb) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _loadAlbums() async {
-    try {
-      final albums = await _mediaLibrary.getAlbums();
-      setState(() {
-        _albums = albums;
-      });
-    } catch (e) {
-      debugPrint('Error loading albums: $e');
-    }
-  }
-
-  Future<void> _loadMedia({bool reset = false}) async {
-    if (_isLoading || _isLoadingMore) return;
-
-    if (reset) {
-      setState(() {
-        _currentOffset = 0;
-        _mediaList.clear();
-        _thumbnailsCache.clear();
-        _thumbnailCompleters.clear();
-        _hasMoreItems = true;
-      });
-    }
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      if (kIsWeb) {
-        debugPrint('WEB: opening file picker...');
-
-        final newMedia = await _mediaLibrary.pickFiles(multiple: true);
-
-        debugPrint('WEB: picked ${newMedia?.length ?? 0} files');
-
-        if (newMedia != null && newMedia.isNotEmpty) {
-          for (final file in newMedia) {
-            debugPrint(
-              'WEB FILE -> name=${file['name']} '
-              'size=${file['size']} '
-              'type=${file['type']} '
-              'mime=${file['mimeType']} '
-              'id=${file['id']}',
-            );
-          }
-
-          setState(() {
-            _mediaList.addAll(newMedia);
-            _hasMoreItems = false;
-          });
-
-          _preloadThumbnails(newMedia);
-        }
-      } else {
-        List<Map<String, dynamic>>? newMedia;
-
-        switch (_selectedMediaType) {
-          case MediaType.images:
-            newMedia = await _mediaLibrary.getImages(
-              limit: _pageSize,
-              offset: _currentOffset,
-              albumId: _selectedAlbumId,
-            );
-            break;
-          case MediaType.videos:
-            newMedia = await _mediaLibrary.getVideos(
-              limit: _pageSize,
-              offset: _currentOffset,
-              albumId: _selectedAlbumId,
-            );
-            break;
-          case MediaType.all:
-            newMedia = await _mediaLibrary.getAllMedia(
-              limit: _pageSize,
-              offset: _currentOffset,
-              albumId: _selectedAlbumId,
-            );
-            break;
-        }
-
-        if (newMedia != null && newMedia.isNotEmpty) {
-          setState(() {
-            _mediaList.addAll(newMedia!);
-            _currentOffset += newMedia.length;
-            _hasMoreItems = newMedia.length == _pageSize;
-          });
-
-          _preloadThumbnails(newMedia);
-        } else {
-          _hasMoreItems = false;
-        }
-      }
-    } catch (e) {
-      debugPrint('Error loading media: $e');
-    } finally {
-      setState(() {
-        _isLoading = false;
-        _isLoadingMore = false;
-      });
-    }
-  }
-
-  Future<void> _pickFilesOnWindows() async {
-    if (_isLoading) return;
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      debugPrint('WINDOWS: opening file picker...');
-
-      final newMedia = await _mediaLibrary.pickFiles(
-        multiple: true,
-        allowedFileTypes: ['*'],
-      );
-
-      debugPrint('WINDOWS: picked ${newMedia?.length ?? 0} files');
-
-      if (newMedia != null && newMedia.isNotEmpty) {
-        for (final file in newMedia) {
-          debugPrint(
-            'WINDOWS FILE -> name=${file['name']} '
-            'size=${file['size']} '
-            'type=${file['type']} '
-            'mime=${file['mimeType']} '
-            'id=${file['id']}',
-          );
-        }
-
-        setState(() {
-          _mediaList.clear();
-          _thumbnailsCache.clear();
-          _thumbnailCompleters.clear();
-          _mediaList.addAll(newMedia);
-          _hasMoreItems = false;
-        });
-
-        _preloadThumbnails(newMedia);
-      }
-    } catch (e) {
-      debugPrint('Error picking files on Windows: $e');
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _processDroppedFiles(List<dynamic> droppedFiles) async {
-    if (droppedFiles.isEmpty) return;
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      debugPrint('Processing ${droppedFiles.length} dropped files');
-
-      final processedMedia = await _mediaLibrary.pickFilesFromDrop(
-        droppedFiles,
-      );
-
-      if (processedMedia.isNotEmpty) {
-        setState(() {
-          _mediaList.clear();
-          _thumbnailsCache.clear();
-          _thumbnailCompleters.clear();
-          _mediaList.addAll(processedMedia);
-          _hasMoreItems = false;
-        });
-
-        _preloadThumbnails(processedMedia);
-
-        debugPrint('Successfully processed ${processedMedia.length} files');
-      }
-    } catch (e) {
-      debugPrint('Error processing dropped files: $e');
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _loadMoreMedia() async {
-    if (_hasMoreItems && !_isLoadingMore && !_isLoading && !kIsWeb) {
-      await _loadMedia(reset: false);
-    }
-  }
-
-  void _preloadThumbnails(List<Map<String, dynamic>> mediaList) {
-    for (final media in mediaList) {
-      final mediaId = _getString(media, 'id');
-      final mediaType = _getString(media, 'type');
-
-      if (!_thumbnailsCache.containsKey(mediaId) &&
-          !_thumbnailCompleters.containsKey(mediaId)) {
-        _loadThumbnail(mediaId, mediaType);
-      }
-    }
-  }
-
-  void _loadThumbnail(String mediaId, String mediaType) {
-    if (_thumbnailCompleters.containsKey(mediaId)) {
-      return;
-    }
-
-    final completer = Completer<Uint8List?>();
-    _thumbnailCompleters[mediaId] = completer;
-
-    _mediaLibrary
-        .getThumbnail(
-          mediaId: mediaId,
-          mediaType: mediaType,
-          width: 200,
-          height: 200,
-        )
-        .then((thumbnail) {
-          if (thumbnail != null) {
-            _thumbnailsCache[mediaId] = thumbnail;
-          }
-          completer.complete(thumbnail);
-          _thumbnailCompleters.remove(mediaId);
-        })
-        .catchError((error) {
-          completer.complete(null);
-          _thumbnailCompleters.remove(mediaId);
-        });
-  }
-
-  Future<Uint8List?> _getThumbnailFuture(
-    String mediaId,
-    String mediaType,
-  ) async {
-    if (_thumbnailsCache.containsKey(mediaId)) {
-      return _thumbnailsCache[mediaId];
-    }
-
-    if (_thumbnailCompleters.containsKey(mediaId)) {
-      return await _thumbnailCompleters[mediaId]!.future;
-    }
-
-    _loadThumbnail(mediaId, mediaType);
-    return await _thumbnailCompleters[mediaId]?.future;
-  }
-
-  void _onMediaTypeChanged(MediaType type) {
-    if (kIsWeb) {
-      _loadMedia(reset: true);
-    } else {
-      setState(() {
-        _selectedMediaType = type;
-      });
-      _loadMedia(reset: true);
-    }
-  }
-
-  void _onAlbumChanged(String? albumId, String? albumName) {
-    if (!kIsWeb) {
-      setState(() {
-        _selectedAlbumId = albumId;
-        _selectedAlbumName = albumName;
-      });
-      _loadMedia(reset: true);
-    }
-  }
-
-  String _getString(Map<String, dynamic> map, String key) {
-    return map[key]?.toString() ?? '';
-  }
-
-  int _getInt(Map<String, dynamic> map, String key) {
-    final value = map[key];
-    if (value == null) return 0;
-    if (value is int) return value;
-    if (value is double) return value.toInt();
-    if (value is String) return int.tryParse(value) ?? 0;
-    return 0;
-  }
-
-  String _formatDuration(int milliseconds) {
-    if (milliseconds == 0) return '';
-
-    final duration = Duration(milliseconds: milliseconds);
-    final minutes = duration.inMinutes;
-    final seconds = duration.inSeconds.remainder(60);
-
-    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-  }
-
-  Widget _buildThumbnail(
-    String mediaId,
-    String mediaType,
-    int width,
-    int height,
-  ) {
-    return FutureBuilder<Uint8List?>(
-      future: _getThumbnailFuture(mediaId, mediaType),
-      builder: (context, snapshot) {
-        if (snapshot.hasData && snapshot.data != null) {
-          return Image.memory(
-            snapshot.data!,
-            fit: BoxFit.cover,
-            width: width.toDouble(),
-            height: height.toDouble(),
-            filterQuality: FilterQuality.medium,
-            cacheWidth: width,
-            cacheHeight: height,
-          );
-        }
-
-        return Container(
-          color: Colors.grey[300],
-          width: width.toDouble(),
-          height: height.toDouble(),
-          child: Icon(
-            mediaType == 'video' ? Icons.video_library : Icons.photo,
-            color: Colors.grey[600],
-            size: 30,
-          ),
-        );
-      },
-    );
-  }
-
-  void _printFilePath(Map<String, dynamic> media) {
-    final mediaId = _getString(media, 'id');
-    final mediaType = _getString(media, 'type');
-    final filePath = _getString(media, 'filePath');
-    final uri = _getString(media, 'uri');
-
-    String path = filePath.isNotEmpty ? filePath : uri;
-
-    if (path.isEmpty) {
-      path = _getString(media, 'path');
-    }
-
-    debugPrint('=== File Information ===');
-    debugPrint('Media ID: $mediaId');
-    debugPrint('Media Type: $mediaType');
-    debugPrint('File Path: $path');
-    debugPrint('========================');
-
-    debugPrint('FILE_PATH: $path');
-  }
-
-  Future<void> _pickFilesOnWeb() async {
-    if (_isLoading) return;
-    await _loadMedia(reset: false);
+    WidgetsBinding.instance.addObserver(this);
+    _bootstrap();
   }
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  Widget _buildDragTarget() {
-    return DragTarget<List<String>>(
-      onWillAcceptWithDetails: (details) {
-        setState(() {
-          _isDragging = true;
-        });
-        return true;
-      },
-      onAcceptWithDetails: (details) async {
-        setState(() {
-          _isDragging = false;
-        });
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !kIsWeb) {
+      _refreshAllFilesPermission();
+    }
+  }
 
-        final List<String> files = details.data;
+  Future<void> _refreshAllFilesPermission() async {
+    final has = await _lib.checkAllFilesPermission();
+    if (has != _hasAllFilesPermission) {
+      setState(() => _hasAllFilesPermission = has);
+      if (has &&
+          (_section == LibrarySection.downloads ||
+              _section == LibrarySection.documents)) {
+        await _loadCurrentSection();
+      }
+    }
+  }
 
-        await _processDroppedFiles(files);
-      },
-      onLeave: (data) {
-        setState(() {
-          _isDragging = false;
+  Future<void> _bootstrap() async {
+    if (kIsWeb) {
+      setState(() {
+        _hasBasicPermission = true;
+        _hasAllFilesPermission = true;
+      });
+      return;
+    }
+
+    bool hasBasic = await _lib.checkPermission();
+    if (!hasBasic) {
+      hasBasic = await _lib.requestPermission();
+    }
+
+    bool hasAll = await _lib.checkAllFilesPermission();
+
+    setState(() {
+      _hasBasicPermission = hasBasic;
+      _hasAllFilesPermission = hasAll;
+    });
+
+    if (hasBasic) {
+      await _loadCurrentSection();
+    }
+  }
+
+  Future<void> _requestAllFilesAccess() async {
+    if (kIsWeb) return;
+    final ok = await _lib.requestAllFilesPermission();
+
+    debugPrint('requestAllFilesPermission returned: $ok');
+  }
+
+  Future<void> _loadCurrentSection() async {
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+
+    try {
+      switch (_section) {
+        case LibrarySection.media:
+          final items = await _lib.getAllMedia(limit: 200, offset: 0) ?? [];
+          setState(() {
+            _mediaList
+              ..clear()
+              ..addAll(items);
+          });
+          _preloadThumbs(items);
+          break;
+
+        case LibrarySection.audio:
+          final items = await _lib.getAudio(limit: 200, offset: 0) ?? [];
+          setState(() {
+            _audioList
+              ..clear()
+              ..addAll(items);
+          });
+          break;
+
+        case LibrarySection.downloads:
+          try {
+            final items = await _lib.getDownloads(limit: 200, offset: 0) ?? [];
+            setState(() {
+              _downloadsList
+                ..clear()
+                ..addAll(items);
+            });
+          } catch (e) {
+            debugPrint('getDownloads error: $e');
+            if (mounted) _showError('Не удалось загрузить Download: $e');
+          }
+          break;
+
+        case LibrarySection.documents:
+          try {
+            final items = await _lib.getDocuments(limit: 200, offset: 0) ?? [];
+            setState(() {
+              _documentsList
+                ..clear()
+                ..addAll(items);
+            });
+          } catch (e) {
+            debugPrint('getDocuments error: $e');
+            if (mounted) _showError('Не удалось загрузить Documents: $e');
+          }
+          break;
+      }
+    } catch (e) {
+      debugPrint('Load error: $e');
+      if (mounted) _showError('Ошибка загрузки: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showError(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  void _showInfo(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  void _onSectionChanged(LibrarySection s) {
+    setState(() => _section = s);
+    _loadCurrentSection();
+  }
+
+  void _preloadThumbs(List<Map<String, dynamic>> items) {
+    for (final m in items) {
+      final id = _str(m, 'id');
+      final type = _str(m, 'type');
+      if (!_thumbs.containsKey(id) && !_thumbCompleters.containsKey(id)) {
+        _loadThumb(id, type);
+      }
+    }
+  }
+
+  void _loadThumb(String id, String type) {
+    if (_thumbCompleters.containsKey(id)) return;
+    final c = Completer<Uint8List?>();
+    _thumbCompleters[id] = c;
+
+    _lib
+        .getThumbnail(mediaId: id, mediaType: type, width: 200, height: 200)
+        .then((bytes) {
+          if (bytes != null) _thumbs[id] = bytes;
+          c.complete(bytes);
+        })
+        .catchError((_) {
+          c.complete(null);
+        })
+        .whenComplete(() {
+          _thumbCompleters.remove(id);
         });
-      },
-      builder: (context, candidateData, rejectedData) {
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          decoration: BoxDecoration(
-            color: _isDragging
-                ? Colors.blue.withValues(alpha: 0.1)
-                : Colors.transparent,
-            border: _isDragging
-                ? Border.all(color: Colors.blue, width: 2)
-                : null,
-            borderRadius: BorderRadius.circular(8),
-          ),
+  }
+
+  Future<Uint8List?> _thumbFuture(String id, String type) async {
+    if (_thumbs.containsKey(id)) return _thumbs[id];
+    if (_thumbCompleters.containsKey(id)) {
+      return _thumbCompleters[id]!.future;
+    }
+    _loadThumb(id, type);
+    return _thumbCompleters[id]?.future;
+  }
+
+  String _str(Map<String, dynamic> m, String k) => m[k]?.toString() ?? '';
+
+  int _int(Map<String, dynamic> m, String k) {
+    final v = m[k];
+    if (v is int) return v;
+    if (v is double) return v.toInt();
+    if (v is String) return int.tryParse(v) ?? 0;
+    return 0;
+  }
+
+  String _fmtBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / 1024 / 1024 / 1024).toStringAsFixed(2)} GB';
+  }
+
+  String _fmtDuration(int ms) {
+    if (ms <= 0) return '';
+    final d = Duration(milliseconds: ms);
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    if (d.inHours > 0) {
+      return '${d.inHours}:$m:$s';
+    }
+    return '$m:$s';
+  }
+
+  IconData _iconForType(String type) {
+    switch (type) {
+      case 'image':
+        return Icons.image;
+      case 'video':
+        return Icons.videocam;
+      case 'audio':
+        return Icons.music_note;
+      default:
+        return Icons.insert_drive_file;
+    }
+  }
+
+  Color _colorForType(String type) {
+    switch (type) {
+      case 'image':
+        return Colors.green;
+      case 'video':
+        return Colors.red;
+      case 'audio':
+        return Colors.purple;
+      default:
+        return Colors.blueGrey;
+    }
+  }
+
+  Widget _buildMediaGrid() {
+    if (_mediaList.isEmpty) {
+      return const Center(child: Text('Нет медиафайлов'));
+    }
+    return GridView.builder(
+      padding: const EdgeInsets.all(2),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 2,
+        mainAxisSpacing: 2,
+      ),
+      itemCount: _mediaList.length,
+      itemBuilder: (context, i) {
+        final m = _mediaList[i];
+        final id = _str(m, 'id');
+        final type = _str(m, 'type');
+        final dur = _int(m, 'duration');
+        final name = _str(m, 'name');
+
+        return InkWell(
+          onTap: () => _showFileInfo(m),
           child: Stack(
             children: [
-              _buildBodyContent(),
-              if (_isDragging)
-                Positioned.fill(
-                  child: Container(
-                    color: Colors.blue.withValues(alpha: 0.3),
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.cloud_upload,
-                            size: 64,
-                            color: Colors.blue,
-                          ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Drop files here',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Release to add ${candidateData.length} files',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              color: Colors.blue,
-                            ),
-                          ),
-                        ],
+              Positioned.fill(
+                child: FutureBuilder<Uint8List?>(
+                  future: _thumbFuture(id, type),
+                  builder: (context, snap) {
+                    if (snap.hasData && snap.data != null) {
+                      return Image.memory(snap.data!, fit: BoxFit.cover);
+                    }
+                    return Container(
+                      color: _colorForType(type).withValues(alpha: 0.2),
+                      child: Icon(
+                        _iconForType(type),
+                        size: 32,
+                        color: _colorForType(type),
                       ),
-                    ),
+                    );
+                  },
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  color: Colors.black54,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 2,
+                  ),
+                  child: Text(
+                    type == 'video' && dur > 0
+                        ? '${_fmtDuration(dur)} · $name'
+                        : name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontSize: 9),
                   ),
                 ),
+              ),
             ],
           ),
         );
@@ -545,405 +339,355 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
-  Widget _buildBodyContent() {
-    return _isLoading && !kIsWeb && _mediaList.isEmpty
-        ? Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const CircularProgressIndicator(),
-                if (_isRequestingPermission) ...[
-                  const SizedBox(height: 20),
-                  const Text('Requesting permission...'),
-                ],
-              ],
-            ),
-          )
-        : !_hasPermission && !kIsWeb
-        ? Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error_outline, size: 64, color: Colors.red),
-                const SizedBox(height: 20),
-                const Text(
-                  'Permission Required',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  'This app needs access to your photos to display them.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16),
-                ),
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: _checkPermissionAndLoadData,
-                  child: const Text('Grant Permission'),
-                ),
-              ],
-            ),
-          )
-        : _buildGrid();
+  Widget _buildAudioList() {
+    if (_audioList.isEmpty) {
+      return const Center(child: Text('Нет музыки'));
+    }
+    return ListView.separated(
+      itemCount: _audioList.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, i) {
+        final a = _audioList[i];
+        final name = _str(a, 'name');
+        final artist = _str(a, 'artist');
+        final album = _str(a, 'album');
+        final dur = _int(a, 'duration');
+        final size = _int(a, 'size');
+
+        return ListTile(
+          leading: CircleAvatar(
+            backgroundColor: Colors.purple.withValues(alpha: 0.15),
+            child: const Icon(Icons.music_note, color: Colors.purple),
+          ),
+          title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(
+            [
+              if (artist.isNotEmpty && artist != '<unknown>') artist,
+              if (album.isNotEmpty && album != '<unknown>') album,
+              if (dur > 0) _fmtDuration(dur),
+              _fmtBytes(size),
+            ].join(' · '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          onTap: () => _showFileInfo(a),
+          onLongPress: () => _copyUri(a),
+        );
+      },
+    );
   }
 
-  Widget _buildGrid() {
-    return Column(
-      children: [
-        if (!kIsWeb)
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: SegmentedButton<MediaType>(
-                    segments: const [
-                      ButtonSegment<MediaType>(
-                        value: MediaType.all,
-                        label: Text('Все'),
-                        icon: Icon(Icons.all_inclusive),
-                      ),
-                      ButtonSegment<MediaType>(
-                        value: MediaType.images,
-                        label: Text('Фото'),
-                        icon: Icon(Icons.photo),
-                      ),
-                      ButtonSegment<MediaType>(
-                        value: MediaType.videos,
-                        label: Text('Видео'),
-                        icon: Icon(Icons.video_library),
-                      ),
-                    ],
-                    selected: {_selectedMediaType},
-                    onSelectionChanged: (Set<MediaType> newSelection) {
-                      _onMediaTypeChanged(newSelection.first);
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        if (!kIsWeb && _selectedAlbumName != null)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                const Icon(Icons.photo_album, size: 16),
-                const SizedBox(width: 4),
-                Text(
-                  'Альбом: $_selectedAlbumName',
-                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                ),
-                const Spacer(),
-                TextButton(
-                  onPressed: () => _onAlbumChanged(null, null),
-                  child: const Text('Показать все'),
-                ),
-              ],
-            ),
-          ),
-        if ((!kIsWeb && _mediaList.isEmpty) || (kIsWeb && _mediaList.isEmpty))
-          Expanded(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    kIsWeb ? Icons.cloud_upload : Icons.photo_library,
-                    size: 64,
-                    color: Colors.grey,
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    kIsWeb
-                        ? 'Click the button to select files'
-                        : 'No media found or dropped',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    kIsWeb
-                        ? 'Select image or video files from your device'
-                        : 'Use the file picker or drag & drop files here',
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 20),
-                  if (kIsWeb)
-                    ElevatedButton(
-                      onPressed: _pickFilesOnWeb,
-                      child: const Text('Select Files'),
-                    ),
-                  if (!kIsWeb)
-                    ElevatedButton(
-                      onPressed: _pickFilesOnWindows,
-                      child: const Text('Select Files'),
-                    ),
-                ],
-              ),
-            ),
-          )
-        else
-          Expanded(
-            child: NotificationListener<ScrollNotification>(
-              onNotification: (scrollNotification) {
-                if (!kIsWeb && scrollNotification is ScrollEndNotification) {
-                  final metrics = scrollNotification.metrics;
-                  if (metrics.atEdge && metrics.pixels != 0) {
-                    _loadMoreMedia();
-                  }
-                }
-                return false;
-              },
-              child: GridView.builder(
-                controller: kIsWeb ? null : _scrollController,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 2.0,
-                  mainAxisSpacing: 2.0,
-                ),
-                itemCount:
-                    _mediaList.length + (!kIsWeb && _hasMoreItems ? 1 : 0),
-                itemBuilder: (context, index) {
-                  if (!kIsWeb && index == _mediaList.length) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: _isLoadingMore
-                            ? const CircularProgressIndicator()
-                            : const Text('No more items'),
-                      ),
-                    );
-                  }
+  Widget _buildFileList(List<Map<String, dynamic>> list, String emptyText) {
+    if (list.isEmpty) {
+      return Center(child: Text(emptyText));
+    }
+    return ListView.separated(
+      itemCount: list.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, i) {
+        final f = list[i];
+        final name = _str(f, 'name');
+        final type = _str(f, 'type');
+        final mime = _str(f, 'mimeType');
+        final size = _int(f, 'size');
 
-                  final media = _mediaList[index];
-                  final mediaId = _getString(media, 'id');
-                  final mediaType = _getString(media, 'type');
-                  final duration = _getInt(media, 'duration');
-                  final fileName = _getString(media, 'name');
-
-                  return GestureDetector(
-                    onTap: () {
-                      _printFilePath(media);
-                      if (kIsWeb) {
-                        showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: Text(fileName),
-                            content: SingleChildScrollView(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text('Type: $mediaType'),
-                                  Text('Size: ${_getInt(media, 'size')} bytes'),
-                                  if (duration > 0)
-                                    Text(
-                                      'Duration: ${_formatDuration(duration)}',
-                                    ),
-                                  const SizedBox(height: 20),
-                                  SizedBox(
-                                    height: 300,
-                                    child: _buildThumbnail(
-                                      mediaId,
-                                      mediaType,
-                                      300,
-                                      300,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text('Close'),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-                    },
-                    onLongPress: () {
-                      if (kIsWeb) {
-                        showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('File Options'),
-                            content: const Text(
-                              'What would you like to do with this file?',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text('Cancel'),
-                              ),
-                              TextButton(
-                                onPressed: () {
-                                  Navigator.pop(context);
-                                  _printFilePath(media);
-                                },
-                                child: const Text('View Details'),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-                    },
-                    child: Stack(
-                      children: [
-                        _buildThumbnail(mediaId, mediaType, 200, 200),
-                        if (mediaType == 'video')
-                          Positioned(
-                            bottom: 4,
-                            right: 4,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 4,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.black54,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.play_arrow,
-                                    size: 12,
-                                    color: Colors.white,
-                                  ),
-                                  const SizedBox(width: 2),
-                                  Text(
-                                    _formatDuration(duration),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        Positioned(
-                          top: 4,
-                          left: 4,
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: const BoxDecoration(
-                              color: Colors.black54,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              mediaType == 'video'
-                                  ? Icons.videocam
-                                  : Icons.photo,
-                              size: 12,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          bottom: 4,
-                          left: 4,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.black54,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              fileName.length > 10
-                                  ? '${fileName.substring(0, 10)}...'
-                                  : fileName,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 8,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
+        return ListTile(
+          leading: CircleAvatar(
+            backgroundColor: _colorForType(type).withValues(alpha: 0.15),
+            child: Icon(_iconForType(type), color: _colorForType(type)),
           ),
-      ],
+          title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(
+            '$mime · ${_fmtBytes(size)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          onTap: () => _showFileInfo(f),
+          onLongPress: () => _copyUri(f),
+        );
+      },
     );
+  }
+
+  Future<void> _showFileInfo(Map<String, dynamic> m) async {
+    final name = _str(m, 'name');
+    final type = _str(m, 'type');
+    final uri = _str(m, 'uri');
+    final path = _str(m, 'path');
+    final mime = _str(m, 'mimeType');
+    final size = _int(m, 'size');
+    final dur = _int(m, 'duration');
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _row('Тип', type),
+                if (mime.isNotEmpty) _row('MIME', mime),
+                _row('Размер', _fmtBytes(size)),
+                if (dur > 0) _row('Длительность', _fmtDuration(dur)),
+                if (uri.isNotEmpty) _row('URI', uri, mono: true),
+                if (path.isNotEmpty) _row('Путь', path, mono: true),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.copy),
+                        label: const Text('Копировать URI'),
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: uri));
+                          Navigator.pop(context);
+                          _showInfo('URI скопирован');
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.download),
+                        label: const Text('Прочитать'),
+                        onPressed: () async {
+                          Navigator.pop(context);
+                          await _readBytes(m);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _row(String k, String v, {bool mono = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 100, child: Text('$k:')),
+          Expanded(
+            child: Text(
+              v,
+              style: TextStyle(
+                fontFamily: mono ? 'monospace' : null,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _copyUri(Map<String, dynamic> m) {
+    final uri = _str(m, 'uri');
+    if (uri.isEmpty) return;
+    Clipboard.setData(ClipboardData(text: uri));
+    _showInfo('URI скопирован в буфер обмена');
+  }
+
+  Future<void> _readBytes(Map<String, dynamic> m) async {
+    final uri = _str(m, 'uri');
+    if (uri.isEmpty) {
+      _showError('URI отсутствует');
+      return;
+    }
+    try {
+      final bytes = await _lib.getFileBytes(uri);
+      if (bytes == null) {
+        _showError('Не удалось прочитать файл');
+        return;
+      }
+      _showInfo('Прочитано ${_fmtBytes(bytes.length)}');
+      if (mounted) {
+        final type = _str(m, 'type');
+        if (type == 'image') {
+          showDialog(
+            context: context,
+            builder: (_) =>
+                Dialog(child: InteractiveViewer(child: Image.memory(bytes))),
+          );
+        }
+      }
+    } catch (e) {
+      _showError('Ошибка чтения: $e');
+    }
+  }
+
+  Widget _buildPermissionBanner() {
+    if (kIsWeb) return const SizedBox.shrink();
+
+    if (!_hasBasicPermission) {
+      return Container(
+        color: Colors.orange.shade100,
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            const Icon(Icons.warning_amber, color: Colors.orange),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Нужны разрешения на чтение медиа',
+                style: TextStyle(color: Colors.black87),
+              ),
+            ),
+            TextButton(onPressed: _bootstrap, child: const Text('Выдать')),
+          ],
+        ),
+      );
+    }
+
+    final needsAll =
+        _section == LibrarySection.downloads ||
+        _section == LibrarySection.documents;
+
+    if (needsAll && !_hasAllFilesPermission) {
+      return Container(
+        color: Colors.red.shade50,
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            const Icon(Icons.lock_outline, color: Colors.red),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Для Download/Documents нужен полный доступ к файлам',
+                style: TextStyle(color: Colors.black87),
+              ),
+            ),
+            TextButton(
+              onPressed: _requestAllFilesAccess,
+              child: const Text('Открыть настройки'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       home: Scaffold(
         appBar: AppBar(
-          title: Text(
-            kIsWeb
-                ? 'Web Media Library'
-                : (_selectedAlbumName ?? 'Device Media Library'),
-          ),
+          title: Text(_titleForSection()),
           actions: [
-            if (!kIsWeb && _albums != null && _albums!.isNotEmpty)
-              PopupMenuButton<String>(
-                onSelected: (value) {
-                  if (value == 'all') {
-                    _onAlbumChanged(null, null);
-                  } else {
-                    final album = _albums!.firstWhere(
-                      (album) => _getString(album, 'id') == value,
-                    );
-                    _onAlbumChanged(
-                      _getString(album, 'id'),
-                      _getString(album, 'name'),
-                    );
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(value: 'all', child: Text('Все альбомы')),
-                  ..._albums!.map((album) {
-                    return PopupMenuItem(
-                      value: _getString(album, 'id'),
-                      child: Text(_getString(album, 'name')),
-                    );
-                  }),
-                ],
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Icon(Icons.photo_album),
-                      SizedBox(width: 4),
-                      Text('Альбомы'),
-                    ],
-                  ),
-                ),
-              ),
             IconButton(
-              icon: const Icon(Icons.add_photo_alternate),
-              onPressed: kIsWeb ? _pickFilesOnWeb : _pickFilesOnWindows,
-              tooltip: 'Pick files',
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Обновить',
+              onPressed: _loadCurrentSection,
             ),
           ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(96),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 8,
+                  ),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _chip(
+                          'Медиа',
+                          Icons.photo_library,
+                          LibrarySection.media,
+                        ),
+                        const SizedBox(width: 8),
+                        _chip('Музыка', Icons.music_note, LibrarySection.audio),
+                        const SizedBox(width: 8),
+                        _chip(
+                          'Download',
+                          Icons.download,
+                          LibrarySection.downloads,
+                        ),
+                        const SizedBox(width: 8),
+                        _chip(
+                          'Documents',
+                          Icons.folder,
+                          LibrarySection.documents,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (_isLoading) const LinearProgressIndicator(minHeight: 2),
+              ],
+            ),
+          ),
         ),
-        body: _buildDragTarget(),
-        floatingActionButton: _mediaList.isNotEmpty
-            ? FloatingActionButton(
-                onPressed: kIsWeb ? _pickFilesOnWeb : _pickFilesOnWindows,
-                tooltip: 'Add more files',
-                child: const Icon(Icons.add),
-              )
-            : null,
+        body: Column(
+          children: [
+            _buildPermissionBanner(),
+            Expanded(child: _buildCurrentSection()),
+          ],
+        ),
       ),
     );
+  }
+
+  Widget _chip(String label, IconData icon, LibrarySection s) {
+    final selected = _section == s;
+    return ChoiceChip(
+      label: Text(label),
+      avatar: Icon(icon, size: 18),
+      selected: selected,
+      onSelected: (_) => _onSectionChanged(s),
+    );
+  }
+
+  Widget _buildCurrentSection() {
+    if (kIsWeb) {
+      return const Center(child: Text('Веб-версия не поддерживает эти методы'));
+    }
+    switch (_section) {
+      case LibrarySection.media:
+        return _buildMediaGrid();
+      case LibrarySection.audio:
+        return _buildAudioList();
+      case LibrarySection.downloads:
+        return _buildFileList(_downloadsList, 'Нет файлов в Download');
+      case LibrarySection.documents:
+        return _buildFileList(_documentsList, 'Нет файлов в Documents');
+    }
+  }
+
+  String _titleForSection() {
+    switch (_section) {
+      case LibrarySection.media:
+        return 'Медиатека';
+      case LibrarySection.audio:
+        return 'Музыка (${_audioList.length})';
+      case LibrarySection.downloads:
+        return 'Download (${_downloadsList.length})';
+      case LibrarySection.documents:
+        return 'Documents (${_documentsList.length})';
+    }
   }
 }

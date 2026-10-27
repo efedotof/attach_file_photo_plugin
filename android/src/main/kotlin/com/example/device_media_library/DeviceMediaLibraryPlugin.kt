@@ -126,26 +126,31 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                     permissionManager?.requestPermission(activity, result)
                 }
 
-                "getImages" ->
-                    mediaQueryManager.getMedia(call, result, MediaType.IMAGE)
+                "checkAllFilesPermission" ->
+                    permissionManager?.checkAllFilesPermission(result)
+                        ?: result.error("NO_ACTIVITY", "Plugin not attached", null)
 
-                "getVideos" ->
-                    mediaQueryManager.getMedia(call, result, MediaType.VIDEO)
+                "requestAllFilesPermission" -> {
+                    val activity = activityBinding?.activity
+                    if (activity == null) {
+                        result.error("NO_ACTIVITY", "Activity is null", null)
+                        return
+                    }
+                    permissionManager?.requestAllFilesPermission(activity, result)
+                }
 
-                "getAllMedia" ->
-                    mediaQueryManager.getAllMedia(call, result)
+                "getImages" -> mediaQueryManager.getMedia(call, result, MediaType.IMAGE)
+                "getVideos" -> mediaQueryManager.getMedia(call, result, MediaType.VIDEO)
+                "getAllMedia" -> mediaQueryManager.getAllMedia(call, result)
+                "getAlbums" -> mediaQueryManager.getAlbums(result)
+                "getMediaFromAlbum" -> mediaQueryManager.getMediaFromAlbum(call, result)
 
-                "getAlbums" ->
-                    mediaQueryManager.getAlbums(result)
+                "getAudio" -> mediaQueryManager.getAudio(call, result)
+                "getDownloads" -> mediaQueryManager.getDownloads(call, result)
+                "getDocuments" -> mediaQueryManager.getDocuments(call, result)
 
-                "getMediaFromAlbum" ->
-                    mediaQueryManager.getMediaFromAlbum(call, result)
-
-                "getThumbnail" ->
-                    thumbnailManager.getThumbnail(call, result)
-
-                "readFileByUri" ->
-                    fileReader.readFileByUri(call, result)
+                "getThumbnail" -> thumbnailManager.getThumbnail(call, result)
+                "readFileByUri" -> fileReader.readFileByUri(call, result)
 
                 "getFilePath" -> {
                     val uriString = call.argument<String>("uri")
@@ -154,12 +159,10 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                         return
                     }
                     val filePath = getFilePath(uriString)
-                    if (filePath != null) {
-                        result.success(filePath)
-                    } else {
-                        result.error("FILE_ERROR", "Could not resolve file path", null)
-                    }
+                    if (filePath != null) result.success(filePath)
+                    else result.error("FILE_ERROR", "Could not resolve file path", null)
                 }
+
                 else -> result.notImplemented()
             }
         }

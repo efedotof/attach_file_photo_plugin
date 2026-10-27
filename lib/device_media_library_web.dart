@@ -394,4 +394,33 @@ class DeviceMediaLibraryWeb extends DeviceMediaLibraryPlatform {
 
   @override
   Stream<Map<String, dynamic>> get videoEvents => const Stream.empty();
+
+  @override
+  Future<List<Map<String, dynamic>>?> getAudio({
+    int? limit,
+    int? offset,
+  }) async =>
+      [];
+
+  @override
+  Future<List<Map<String, dynamic>>?> getDownloads({
+    int? limit,
+    int? offset,
+    bool recursive = true,
+  }) async =>
+      [];
+
+  @override
+  Future<List<Map<String, dynamic>>?> getDocuments({
+    int? limit,
+    int? offset,
+    bool recursive = true,
+  }) async =>
+      [];
+
+  @override
+  Future<bool> checkAllFilesPermission() async => true;
+
+  @override
+  Future<bool> requestAllFilesPermission() async => true;
 }
