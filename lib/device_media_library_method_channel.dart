@@ -191,7 +191,7 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
     return result.map<Map<String, dynamic>>((item) {
       final map = Map<String, dynamic>.from(item as Map<dynamic, dynamic>);
 
-      final mediaData = {
+      final mediaData = <String, dynamic>{
         'id': map['id']?.toString() ?? '',
         'name': map['name']?.toString() ?? '',
         'uri': map['uri']?.toString() ?? '',
@@ -248,7 +248,7 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
     return result.map<Map<String, dynamic>>((item) {
       final map = Map<String, dynamic>.from(item as Map<dynamic, dynamic>);
 
-      final mediaData = {
+      final mediaData = <String, dynamic>{
         'id': map['id']?.toString() ?? '',
         'name': map['name']?.toString() ?? '',
         'uri': map['uri']?.toString() ?? '',
@@ -494,6 +494,76 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
   Future<bool> requestAllFilesPermission() async {
     final bool? result =
         await _methodChannel.invokeMethod('requestAllFilesPermission');
+    return result ?? false;
+  }
+
+  @override
+  Future<Map<String, dynamic>> checkStorageAccess({
+    String folder = 'download',
+  }) async {
+    final result = await _methodChannel.invokeMethod<Map<dynamic, dynamic>>(
+      'checkStorageAccess',
+      {'folder': folder},
+    );
+    if (result == null) {
+      return {
+        'supported': false,
+        'accessMode': 'none',
+        'hasAccess': false,
+        'requiresSaf': false,
+        'requiresManage': false,
+        'reason': 'Unknown platform state',
+      };
+    }
+    return {
+      'supported': result['supported'] == true,
+      'accessMode': result['accessMode']?.toString() ?? 'none',
+      'hasAccess': result['hasAccess'] == true,
+      'requiresSaf': result['requiresSaf'] == true,
+      'requiresManage': result['requiresManage'] == true,
+      'reason': result['reason']?.toString() ?? '',
+    };
+  }
+
+  @override
+  Future<bool> hasDownloadsFolderAccess() async {
+    final result =
+        await _methodChannel.invokeMethod<bool>('hasDownloadsFolderAccess');
+    return result ?? false;
+  }
+
+  @override
+  Future<bool> requestDownloadsFolderAccess() async {
+    final result =
+        await _methodChannel.invokeMethod<bool>('requestDownloadsFolderAccess');
+    return result ?? false;
+  }
+
+  @override
+  Future<bool> revokeDownloadsFolderAccess() async {
+    final result =
+        await _methodChannel.invokeMethod<bool>('revokeDownloadsFolderAccess');
+    return result ?? false;
+  }
+
+  @override
+  Future<bool> hasDocumentsFolderAccess() async {
+    final result =
+        await _methodChannel.invokeMethod<bool>('hasDocumentsFolderAccess');
+    return result ?? false;
+  }
+
+  @override
+  Future<bool> requestDocumentsFolderAccess() async {
+    final result =
+        await _methodChannel.invokeMethod<bool>('requestDocumentsFolderAccess');
+    return result ?? false;
+  }
+
+  @override
+  Future<bool> revokeDocumentsFolderAccess() async {
+    final result =
+        await _methodChannel.invokeMethod<bool>('revokeDocumentsFolderAccess');
     return result ?? false;
   }
 }

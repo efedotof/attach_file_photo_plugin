@@ -30,7 +30,7 @@ abstract class DeviceMediaLibraryPlatform extends PlatformInterface {
   static void initialize([DeviceMediaLibraryPlatform? platform]) {
     if (platform != null) {
       instance = platform;
-    } else {}
+    }
   }
 
   Future<String?> getPlatformVersion() {
@@ -155,9 +155,7 @@ abstract class DeviceMediaLibraryPlatform extends PlatformInterface {
     throw UnimplementedError('pickFiles() has not been implemented.');
   }
 
-  Future<List<Map<String, dynamic>>> pickFilesFromDrop(
-    List<dynamic> files,
-  ) {
+  Future<List<Map<String, dynamic>>> pickFilesFromDrop(List<dynamic> files) {
     throw UnimplementedError('pickFilesFromDrop() has not been implemented.');
   }
 
@@ -177,7 +175,7 @@ abstract class DeviceMediaLibraryPlatform extends PlatformInterface {
     throw UnimplementedError('getFilePath() has not been implemented.');
   }
 
-    Future<List<Map<String, dynamic>>?> getAudio({
+  Future<List<Map<String, dynamic>>?> getAudio({
     int? limit,
     int? offset,
   }) {
@@ -201,12 +199,48 @@ abstract class DeviceMediaLibraryPlatform extends PlatformInterface {
   }
 
   Future<bool> checkAllFilesPermission() {
-    throw UnimplementedError('checkAllFilesPermission() has not been implemented.');
+    throw UnimplementedError(
+        'checkAllFilesPermission() has not been implemented.');
   }
 
   Future<bool> requestAllFilesPermission() {
-    throw UnimplementedError('requestAllFilesPermission() has not been implemented.');
+    throw UnimplementedError(
+        'requestAllFilesPermission() has not been implemented.');
   }
 
+  Future<Map<String, dynamic>> checkStorageAccess({
+    String folder = 'download',
+  }) {
+    throw UnimplementedError('checkStorageAccess() has not been implemented.');
+  }
 
+  Future<bool> hasDownloadsFolderAccess() {
+    throw UnimplementedError(
+        'hasDownloadsFolderAccess() has not been implemented.');
+  }
+
+  Future<bool> requestDownloadsFolderAccess() {
+    throw UnimplementedError(
+        'requestDownloadsFolderAccess() has not been implemented.');
+  }
+
+  Future<bool> revokeDownloadsFolderAccess() {
+    throw UnimplementedError(
+        'revokeDownloadsFolderAccess() has not been implemented.');
+  }
+
+  Future<bool> hasDocumentsFolderAccess() {
+    throw UnimplementedError(
+        'hasDocumentsFolderAccess() has not been implemented.');
+  }
+
+  Future<bool> requestDocumentsFolderAccess() {
+    throw UnimplementedError(
+        'requestDocumentsFolderAccess() has not been implemented.');
+  }
+
+  Future<bool> revokeDocumentsFolderAccess() {
+    throw UnimplementedError(
+        'revokeDocumentsFolderAccess() has not been implemented.');
+  }
 }

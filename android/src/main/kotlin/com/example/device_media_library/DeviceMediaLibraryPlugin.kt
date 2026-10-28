@@ -1,10 +1,12 @@
 package com.example.device_media_library
 
-import android.net.Uri
-import android.provider.MediaStore
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.provider.MediaStore
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -30,9 +32,13 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
     private lateinit var mediaQueryManager: MediaQueryManager
     private lateinit var thumbnailManager: ThumbnailManager
     private lateinit var fileReader: FileReader
+    private lateinit var safManager: SafManager
 
     private var permissionManager: PermissionManager? = null
     private var videoPlayerManager: VideoPlayerManager? = null
+
+    private var pendingDownloadsSafResult: MethodChannel.Result? = null
+    private var pendingDocumentsSafResult: MethodChannel.Result? = null
 
     companion object {
         @Volatile
@@ -40,14 +46,14 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
         fun getInstance(): DeviceMediaLibraryPlugin? = instance
     }
 
-
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         instance = this
         context = binding.applicationContext
 
         permissionManager = PermissionManager(context)
+        safManager = SafManager(context)
 
-        mediaQueryManager = MediaQueryManager(context, executor, mainHandler)
+        mediaQueryManager = MediaQueryManager(context, executor, mainHandler, safManager)
         thumbnailManager = ThumbnailManager(context, executor, mainHandler)
         fileReader = FileReader(context, executor, mainHandler)
 
@@ -77,16 +83,17 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         instance = null
         executor.shutdownNow()
-
         videoPlayerManager?.release()
         videoPlayerManager = null
         permissionManager = null
     }
 
-
     override fun onAttachedToActivity(binding: ActivityPluginBinding) {
         activityBinding = binding
         permissionManager?.setActivityBinding(binding)
+        binding.addActivityResultListener { requestCode, resultCode, data ->
+            handleSafResult(requestCode, resultCode, data)
+        }
     }
 
     override fun onDetachedFromActivity() {
@@ -104,6 +111,38 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
         permissionManager?.setActivityBinding(null)
     }
 
+    private fun handleSafResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?
+    ): Boolean {
+        val uri: Uri? = data?.data
+        when (requestCode) {
+            SafManager.REQUEST_CODE_DOWNLOADS_SAF -> {
+                val pending = pendingDownloadsSafResult
+                pendingDownloadsSafResult = null
+                if (resultCode == Activity.RESULT_OK && uri != null) {
+                    safManager.saveDownloadsUri(uri)
+                    pending?.success(true)
+                } else {
+                    pending?.success(false)
+                }
+                return true
+            }
+            SafManager.REQUEST_CODE_DOCUMENTS_SAF -> {
+                val pending = pendingDocumentsSafResult
+                pendingDocumentsSafResult = null
+                if (resultCode == Activity.RESULT_OK && uri != null) {
+                    safManager.saveDocumentsUri(uri)
+                    pending?.success(true)
+                } else {
+                    pending?.success(false)
+                }
+                return true
+            }
+        }
+        return false
+    }
 
     private fun sendVideoEvent(event: Map<String, Any>) {
         mainHandler.post { videoEventSink?.success(event) }
@@ -139,16 +178,89 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                     permissionManager?.requestAllFilesPermission(activity, result)
                 }
 
+                "checkStorageAccess" -> {
+                    val folder = call.argument<String>("folder") ?: "download"
+                    result.success(mediaQueryManager.checkStorageAccess(folder))
+                }
+
+                "hasDownloadsFolderAccess" -> {
+                    result.success(safManager.hasDownloadsUri())
+                }
+
+                "requestDownloadsFolderAccess" -> {
+                    val activity = activityBinding?.activity
+                    if (activity == null) {
+                        result.error("NO_ACTIVITY", "Activity is null", null)
+                        return
+                    }
+                    if (safManager.hasDownloadsUri()) {
+                        result.success(true)
+                        return
+                    }
+                    if (pendingDownloadsSafResult != null) {
+                        result.error("REQUEST_IN_PROGRESS", "SAF request already in progress", null)
+                        return
+                    }
+                    pendingDownloadsSafResult = result
+                    try {
+                        activity.startActivityForResult(
+                            safManager.buildPickerIntent(),
+                            SafManager.REQUEST_CODE_DOWNLOADS_SAF
+                        )
+                    } catch (e: Exception) {
+                        pendingDownloadsSafResult = null
+                        result.error("SAF_ERROR", "Cannot open SAF picker: ${e.message}", null)
+                    }
+                }
+
+                "revokeDownloadsFolderAccess" -> {
+                    safManager.clearDownloadsUri()
+                    result.success(true)
+                }
+
+                "hasDocumentsFolderAccess" -> {
+                    result.success(safManager.hasDocumentsUri())
+                }
+
+                "requestDocumentsFolderAccess" -> {
+                    val activity = activityBinding?.activity
+                    if (activity == null) {
+                        result.error("NO_ACTIVITY", "Activity is null", null)
+                        return
+                    }
+                    if (safManager.hasDocumentsUri()) {
+                        result.success(true)
+                        return
+                    }
+                    if (pendingDocumentsSafResult != null) {
+                        result.error("REQUEST_IN_PROGRESS", "SAF request already in progress", null)
+                        return
+                    }
+                    pendingDocumentsSafResult = result
+                    try {
+                        activity.startActivityForResult(
+                            safManager.buildPickerIntent(),
+                            SafManager.REQUEST_CODE_DOCUMENTS_SAF
+                        )
+                    } catch (e: Exception) {
+                        pendingDocumentsSafResult = null
+                        result.error("SAF_ERROR", "Cannot open SAF picker: ${e.message}", null)
+                    }
+                }
+
+                "revokeDocumentsFolderAccess" -> {
+                    safManager.clearDocumentsUri()
+                    result.success(true)
+                }
+
                 "getImages" -> mediaQueryManager.getMedia(call, result, MediaType.IMAGE)
                 "getVideos" -> mediaQueryManager.getMedia(call, result, MediaType.VIDEO)
                 "getAllMedia" -> mediaQueryManager.getAllMedia(call, result)
                 "getAlbums" -> mediaQueryManager.getAlbums(result)
                 "getMediaFromAlbum" -> mediaQueryManager.getMediaFromAlbum(call, result)
-
                 "getAudio" -> mediaQueryManager.getAudio(call, result)
                 "getDownloads" -> mediaQueryManager.getDownloads(call, result)
                 "getDocuments" -> mediaQueryManager.getDocuments(call, result)
-
                 "getThumbnail" -> thumbnailManager.getThumbnail(call, result)
                 "readFileByUri" -> fileReader.readFileByUri(call, result)
 
@@ -185,7 +297,9 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                         object : VideoPlayerManager.VideoEventCallback {
 
                             override fun onPrepared(duration: Double) {
-                                sendVideoEvent(mapOf("event" to "onPrepared", "duration" to duration))
+                                sendVideoEvent(
+                                    mapOf("event" to "onPrepared", "duration" to duration)
+                                )
                             }
 
                             override fun onPlaybackUpdate(position: Double, isPlaying: Boolean) {
@@ -199,7 +313,12 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                             }
 
                             override fun onBufferingUpdate(isBuffering: Boolean) {
-                                sendVideoEvent(mapOf("event" to "onBufferingUpdate", "isBuffering" to isBuffering))
+                                sendVideoEvent(
+                                    mapOf(
+                                        "event" to "onBufferingUpdate",
+                                        "isBuffering" to isBuffering
+                                    )
+                                )
                             }
 
                             override fun onCompleted() {
@@ -207,7 +326,9 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                             }
 
                             override fun onError(message: String) {
-                                sendVideoEvent(mapOf("event" to "onError", "message" to message))
+                                sendVideoEvent(
+                                    mapOf("event" to "onError", "message" to message)
+                                )
                             }
 
                             override fun onVideoSizeChanged(width: Int, height: Int) {
@@ -222,7 +343,6 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                         }
                     )
 
-                    // setVolume ожидает Float
                     videoPlayerManager?.setVolume(volume.toFloat())
                     result.success(true)
                 }
@@ -238,7 +358,6 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                 }
 
                 "seekTo" -> {
-                    // ожидаем Double, передаем в VideoPlayerManager как Double
                     call.argument<Double>("position")?.let { pos ->
                         videoPlayerManager?.seekTo(pos)
                     }
@@ -255,7 +374,6 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
             }
         }
     }
-
 
     fun attachSurface(holder: android.view.SurfaceHolder?) {
         videoPlayerManager?.setDisplay(holder)
@@ -276,12 +394,10 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                 }
             }
             try {
-                context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                }
-            } catch (e: Exception) { }
+                context.contentResolver.openFileDescriptor(uri, "r")?.use { }
+            } catch (e: Exception) {
+            }
         }
         return null
     }
-
-
 }

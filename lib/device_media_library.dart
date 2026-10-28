@@ -198,9 +198,7 @@ class DeviceMediaLibrary {
     );
   }
 
-  Future<List<Map<String, dynamic>>> pickFilesFromDrop(
-    List<dynamic> files,
-  ) {
+  Future<List<Map<String, dynamic>>> pickFilesFromDrop(List<dynamic> files) {
     ensureInitialized();
     return DeviceMediaLibraryPlatform.instance.pickFilesFromDrop(files);
   }
@@ -225,7 +223,7 @@ class DeviceMediaLibrary {
     return DeviceMediaLibraryPlatform.instance.getFilePath(uri);
   }
 
-    Future<List<Map<String, dynamic>>?> getAudio({
+  Future<List<Map<String, dynamic>>?> getAudio({
     int? limit,
     int? offset,
   }) {
@@ -272,4 +270,41 @@ class DeviceMediaLibrary {
     return DeviceMediaLibraryPlatform.instance.requestAllFilesPermission();
   }
 
+  Future<Map<String, dynamic>> checkStorageAccess({
+    String folder = 'download',
+  }) {
+    ensureInitialized();
+    return DeviceMediaLibraryPlatform.instance
+        .checkStorageAccess(folder: folder);
+  }
+
+  Future<bool> hasDownloadsFolderAccess() {
+    ensureInitialized();
+    return DeviceMediaLibraryPlatform.instance.hasDownloadsFolderAccess();
+  }
+
+  Future<bool> requestDownloadsFolderAccess() {
+    ensureInitialized();
+    return DeviceMediaLibraryPlatform.instance.requestDownloadsFolderAccess();
+  }
+
+  Future<bool> revokeDownloadsFolderAccess() {
+    ensureInitialized();
+    return DeviceMediaLibraryPlatform.instance.revokeDownloadsFolderAccess();
+  }
+
+  Future<bool> hasDocumentsFolderAccess() {
+    ensureInitialized();
+    return DeviceMediaLibraryPlatform.instance.hasDocumentsFolderAccess();
+  }
+
+  Future<bool> requestDocumentsFolderAccess() {
+    ensureInitialized();
+    return DeviceMediaLibraryPlatform.instance.requestDocumentsFolderAccess();
+  }
+
+  Future<bool> revokeDocumentsFolderAccess() {
+    ensureInitialized();
+    return DeviceMediaLibraryPlatform.instance.revokeDocumentsFolderAccess();
+  }
 }

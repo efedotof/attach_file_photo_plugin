@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.os.Handler
 import android.provider.MediaStore
+import android.util.Log
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
@@ -18,7 +19,8 @@ import java.util.concurrent.ExecutorService
 class MediaQueryManager(
     private val context: Context,
     private val executor: ExecutorService,
-    private val mainHandler: Handler
+    private val mainHandler: Handler,
+    private val safManager: SafManager
 ) {
     private val contentResolver: ContentResolver = context.contentResolver
 
@@ -45,6 +47,73 @@ class MediaQueryManager(
         MediaStore.Video.Media.DURATION
     )
 
+    fun checkStorageAccess(folder: String): Map<String, Any?> {
+        val sdk = Build.VERSION.SDK_INT
+        val targetSdk = context.applicationInfo.targetSdkVersion
+
+        Log.d(
+            "MediaQueryManager",
+            "checkStorageAccess: folder=$folder, sdk=$sdk, targetSdk=$targetSdk"
+        )
+
+        return when {
+            sdk < Build.VERSION_CODES.Q -> {
+                mapOf(
+                    "supported" to true,
+                    "accessMode" to "file_api",
+                    "hasAccess" to true,
+                    "requiresSaf" to false,
+                    "requiresManage" to false,
+                    "reason" to "Android $sdk: full file access"
+                )
+            }
+            sdk == Build.VERSION_CODES.Q -> {
+                if (targetSdk < Build.VERSION_CODES.R) {
+                    mapOf(
+                        "supported" to true,
+                        "accessMode" to "file_api",
+                        "hasAccess" to true,
+                        "requiresSaf" to false,
+                        "requiresManage" to false,
+                        "reason" to "Android 10 legacy mode"
+                    )
+                } else {
+                    val hasSaf = if (folder == "document") {
+                        safManager.hasDocumentsUri()
+                    } else {
+                        safManager.hasDownloadsUri()
+                    }
+                    mapOf(
+                        "supported" to true,
+                        "accessMode" to "saf",
+                        "hasAccess" to hasSaf,
+                        "requiresSaf" to !hasSaf,
+                        "requiresManage" to false,
+                        "reason" to if (hasSaf) {
+                            "Android 10: $folder folder access granted"
+                        } else {
+                            "Android 10: $folder folder access required"
+                        }
+                    )
+                }
+            }
+            else -> {
+                val hasManage = Environment.isExternalStorageManager()
+                mapOf(
+                    "supported" to true,
+                    "accessMode" to "file_api",
+                    "hasAccess" to hasManage,
+                    "requiresSaf" to false,
+                    "requiresManage" to !hasManage,
+                    "reason" to if (hasManage) {
+                        "Android $sdk: full file access granted"
+                    } else {
+                        "Android $sdk: MANAGE_EXTERNAL_STORAGE required"
+                    }
+                )
+            }
+        }
+    }
 
     fun getMedia(call: MethodCall, result: MethodChannel.Result, mediaType: MediaType) {
         val limit = call.argument<Int>("limit")
@@ -64,19 +133,25 @@ class MediaQueryManager(
                     )
                 }
 
-                val selection: String? = if (albumId != null) "${MediaStore.MediaColumns.BUCKET_ID} = ?" else null
-                val selectionArgs: Array<String>? = if (albumId != null) arrayOf(albumId) else null
+                val selection: String? =
+                    if (albumId != null) "${MediaStore.MediaColumns.BUCKET_ID} = ?" else null
+                val selectionArgs: Array<String>? =
+                    if (albumId != null) arrayOf(albumId) else null
                 val sortOrder = "$dateColumn DESC"
 
-                val items = queryWithLimitOffset(uri, projection, selection, selectionArgs, sortOrder, limit, offset) { c ->
-                    cursorToMap(c, mediaType)
-                }
+                val items = queryWithLimitOffset(
+                    uri, projection, selection, selectionArgs, sortOrder, limit, offset
+                ) { c -> cursorToMap(c, mediaType) }
 
                 mainHandler.post { result.success(items) }
             } catch (e: SecurityException) {
-                mainHandler.post { result.error("PERMISSION_DENIED", "Permission denied: ${e.message}", null) }
+                mainHandler.post {
+                    result.error("PERMISSION_DENIED", "Permission denied: ${e.message}", null)
+                }
             } catch (e: Exception) {
-                mainHandler.post { result.error("QUERY_ERROR", "Error querying media: ${e.message}", null) }
+                mainHandler.post {
+                    result.error("QUERY_ERROR", "Error querying media: ${e.message}", null)
+                }
             }
         }
     }
@@ -130,8 +205,12 @@ class MediaQueryManager(
                         else -> "unknown"
                     }
                     val contentUri = when (type) {
-                        "image" -> ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-                        "video" -> ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
+                        "image" -> ContentUris.withAppendedId(
+                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id
+                        )
+                        "video" -> ContentUris.withAppendedId(
+                            MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id
+                        )
                         else -> null
                     }
                     val map = mutableMapOf<String, Any?>(
@@ -146,13 +225,17 @@ class MediaQueryManager(
                         "albumName" to safeGetString(cursor, MediaStore.MediaColumns.BUCKET_DISPLAY_NAME),
                         "type" to type
                     )
-                    if (type == "video") map["duration"] = safeGetLong(cursor, MediaStore.Video.Media.DURATION)
+                    if (type == "video") {
+                        map["duration"] = safeGetLong(cursor, MediaStore.Video.Media.DURATION)
+                    }
                     map
                 }
 
                 mainHandler.post { result.success(items) }
             } catch (e: Exception) {
-                mainHandler.post { result.error("QUERY_ERROR", "Error querying all media: ${e.message}", null) }
+                mainHandler.post {
+                    result.error("QUERY_ERROR", "Error querying all media: ${e.message}", null)
+                }
             }
         }
     }
@@ -172,11 +255,18 @@ class MediaQueryManager(
                     MediaStore.Images.Media.BUCKET_DISPLAY_NAME
                 ) { cursor ->
                     val id = safeGetLong(cursor, MediaStore.Images.Media._ID)
-                    val bucketId = safeGetString(cursor, MediaStore.Images.Media.BUCKET_ID) ?: return@querySimple
-                    val bucketName = safeGetString(cursor, MediaStore.Images.Media.BUCKET_DISPLAY_NAME) ?: "Unknown"
-                    val coverUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id).toString()
+                    val bucketId = safeGetString(cursor, MediaStore.Images.Media.BUCKET_ID)
+                        ?: return@querySimple
+                    val bucketName = safeGetString(cursor, MediaStore.Images.Media.BUCKET_DISPLAY_NAME)
+                        ?: "Unknown"
+                    val coverUri = ContentUris.withAppendedId(
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id
+                    ).toString()
                     albums.getOrPut(bucketId) {
-                        mutableMapOf("id" to bucketId, "name" to bucketName, "coverPath" to coverUri, "type" to "image")
+                        mutableMapOf(
+                            "id" to bucketId, "name" to bucketName,
+                            "coverPath" to coverUri, "type" to "image"
+                        )
                     }
                 }
 
@@ -190,9 +280,13 @@ class MediaQueryManager(
                     MediaStore.Video.Media.BUCKET_DISPLAY_NAME
                 ) { cursor ->
                     val id = safeGetLong(cursor, MediaStore.Video.Media._ID)
-                    val bucketId = safeGetString(cursor, MediaStore.Video.Media.BUCKET_ID) ?: return@querySimple
-                    val bucketName = safeGetString(cursor, MediaStore.Video.Media.BUCKET_DISPLAY_NAME) ?: "Unknown"
-                    val coverUri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id).toString()
+                    val bucketId = safeGetString(cursor, MediaStore.Video.Media.BUCKET_ID)
+                        ?: return@querySimple
+                    val bucketName = safeGetString(cursor, MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
+                        ?: "Unknown"
+                    val coverUri = ContentUris.withAppendedId(
+                        MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id
+                    ).toString()
                     val existing = albums[bucketId]
                     if (existing != null) {
                         existing["type"] = "mixed"
@@ -206,7 +300,9 @@ class MediaQueryManager(
 
                 mainHandler.post { result.success(albums.values.toList()) }
             } catch (e: Exception) {
-                mainHandler.post { result.error("ALBUM_ERROR", "Error building albums: ${e.message}", null) }
+                mainHandler.post {
+                    result.error("ALBUM_ERROR", "Error building albums: ${e.message}", null)
+                }
             }
         }
     }
@@ -236,7 +332,9 @@ class MediaQueryManager(
                 val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
                 val sortOrder = "${MediaStore.Audio.Media.DATE_ADDED} DESC"
 
-                val items = queryWithLimitOffset(uri, projection, selection, null, sortOrder, limit, offset) { c ->
+                val items = queryWithLimitOffset(
+                    uri, projection, selection, null, sortOrder, limit, offset
+                ) { c ->
                     val id = safeGetLong(c, MediaStore.Audio.Media._ID)
                     val albumName = safeGetString(c, MediaStore.Audio.Media.ALBUM)
                     mapOf(
@@ -258,13 +356,16 @@ class MediaQueryManager(
                 }
                 mainHandler.post { result.success(items) }
             } catch (e: SecurityException) {
-                mainHandler.post { result.error("PERMISSION_DENIED", e.message ?: "Permission denied", null) }
+                mainHandler.post {
+                    result.error("PERMISSION_DENIED", e.message ?: "Permission denied", null)
+                }
             } catch (e: Exception) {
-                mainHandler.post { result.error("QUERY_ERROR", "Error querying audio: ${e.message}", null) }
+                mainHandler.post {
+                    result.error("QUERY_ERROR", "Error querying audio: ${e.message}", null)
+                }
             }
         }
     }
-
 
     fun getDownloads(call: MethodCall, result: MethodChannel.Result) {
         val limit = call.argument<Int>("limit")
@@ -273,61 +374,74 @@ class MediaQueryManager(
 
         executor.execute {
             try {
-                val hasAllAccess = Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
+                val sdk = Build.VERSION.SDK_INT
+                val targetSdk = context.applicationInfo.targetSdkVersion
+                val hasManage = sdk >= Build.VERSION_CODES.R &&
                         Environment.isExternalStorageManager()
 
-                if (hasAllAccess) {
-                 
-                    val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                    val items = filePage(dir, recursive, limit, offset, "download")
-                    mainHandler.post { result.success(items) }
-                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                   
-                    val uri = MediaStore.Downloads.EXTERNAL_CONTENT_URI
-                    val projection = arrayOf(
-                        MediaStore.Downloads._ID,
-                        MediaStore.Downloads.DISPLAY_NAME,
-                        MediaStore.Downloads.DATE_ADDED,
-                        MediaStore.Downloads.SIZE,
-                        MediaStore.Downloads.MIME_TYPE,
-                        MediaStore.Downloads.RELATIVE_PATH
+                val fileApiAvailable = when {
+                    sdk < Build.VERSION_CODES.Q -> true
+                    sdk == Build.VERSION_CODES.Q -> targetSdk < Build.VERSION_CODES.R
+                    else -> hasManage
+                }
+
+                if (fileApiAvailable) {
+                    val dir = Environment.getExternalStoragePublicDirectory(
+                        Environment.DIRECTORY_DOWNLOADS
                     )
-                    val sortOrder = "${MediaStore.Downloads.DATE_ADDED} DESC"
-                    val items = queryWithLimitOffset(uri, projection, null, null, sortOrder, limit, offset) { c ->
-                        val id = safeGetLong(c, MediaStore.Downloads._ID)
-                        val mime = safeGetString(c, MediaStore.Downloads.MIME_TYPE) ?: "application/octet-stream"
-                        mapOf(
-                            "id" to id.toString(),
-                            "name" to safeGetString(c, MediaStore.Downloads.DISPLAY_NAME),
-                            "uri" to ContentUris.withAppendedId(uri, id).toString(),
-                            "dateAdded" to safeGetLong(c, MediaStore.Downloads.DATE_ADDED),
-                            "size" to safeGetLong(c, MediaStore.Downloads.SIZE),
-                            "mimeType" to mime,
-                            "type" to mediaTypeFromMime(mime),
-                            "category" to "download",
-                            "path" to safeGetString(c, MediaStore.Downloads.RELATIVE_PATH),
-                            "width" to 0,
-                            "height" to 0,
-                            "albumId" to "",
-                            "albumName" to "Downloads"
-                        )
+                    if (dir.exists() && dir.canRead()) {
+                        val items = filePage(dir, recursive, limit, offset, "download")
+                        Log.d("MediaQueryManager", "getDownloads file_api: ${items.size}")
+                        mainHandler.post { result.success(items) }
+                        return@execute
                     }
-                    mainHandler.post { result.success(items) }
-                } else {
+                }
+
+                if (sdk == Build.VERSION_CODES.Q && targetSdk >= Build.VERSION_CODES.R) {
+                    val treeUri = safManager.getDownloadsUri()
+                    if (treeUri != null) {
+                        val items = safManager.listFiles(
+                            treeUri, limit, offset, recursive, "download"
+                        )
+                        Log.d("MediaQueryManager", "getDownloads saf: ${items.size}")
+                        mainHandler.post { result.success(items) }
+                        return@execute
+                    }
                     mainHandler.post {
                         result.error(
-                            "PERMISSION_DENIED",
-                            "READ_EXTERNAL_STORAGE required",
+                            "SAF_REQUIRED",
+                            "Folder access required. Call requestDownloadsFolderAccess().",
                             null
                         )
                     }
+                    return@execute
+                }
+
+                if (sdk >= Build.VERSION_CODES.R && !hasManage) {
+                    mainHandler.post {
+                        result.error(
+                            "PERMISSION_REQUIRED",
+                            "MANAGE_EXTERNAL_STORAGE required",
+                            null
+                        )
+                    }
+                    return@execute
+                }
+
+                mainHandler.post { result.success(emptyList<Map<String, Any?>>()) }
+            } catch (e: SecurityException) {
+                Log.e("MediaQueryManager", "getDownloads SecurityException", e)
+                mainHandler.post {
+                    result.error("PERMISSION_DENIED", e.message ?: "Permission denied", null)
                 }
             } catch (e: Exception) {
-                mainHandler.post { result.error("QUERY_ERROR", "Error querying downloads: ${e.message}", null) }
+                Log.e("MediaQueryManager", "getDownloads error", e)
+                mainHandler.post {
+                    result.error("QUERY_ERROR", "Error querying downloads: ${e.message}", null)
+                }
             }
         }
     }
-
 
     fun getDocuments(call: MethodCall, result: MethodChannel.Result) {
         val limit = call.argument<Int>("limit")
@@ -336,28 +450,72 @@ class MediaQueryManager(
 
         executor.execute {
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                    !Environment.isExternalStorageManager()
-                ) {
+                val sdk = Build.VERSION.SDK_INT
+                val targetSdk = context.applicationInfo.targetSdkVersion
+                val hasManage = sdk >= Build.VERSION_CODES.R &&
+                        Environment.isExternalStorageManager()
+
+                val fileApiAvailable = when {
+                    sdk < Build.VERSION_CODES.Q -> true
+                    sdk == Build.VERSION_CODES.Q -> targetSdk < Build.VERSION_CODES.R
+                    else -> hasManage
+                }
+
+                if (fileApiAvailable) {
+                    val dir = Environment.getExternalStoragePublicDirectory(
+                        Environment.DIRECTORY_DOCUMENTS
+                    )
+                    if (dir.exists() && dir.canRead()) {
+                        val items = filePage(dir, recursive, limit, offset, "document")
+                        Log.d("MediaQueryManager", "getDocuments file_api: ${items.size}")
+                        mainHandler.post { result.success(items) }
+                        return@execute
+                    }
+                }
+
+                if (sdk == Build.VERSION_CODES.Q && targetSdk >= Build.VERSION_CODES.R) {
+                    val treeUri = safManager.getDocumentsUri()
+                    if (treeUri != null) {
+                        val items = safManager.listFiles(
+                            treeUri, limit, offset, recursive, "document"
+                        )
+                        Log.d("MediaQueryManager", "getDocuments saf: ${items.size}")
+                        mainHandler.post { result.success(items) }
+                        return@execute
+                    }
                     mainHandler.post {
                         result.error(
-                            "PERMISSION_DENIED",
-                            "MANAGE_EXTERNAL_STORAGE required to read Documents",
+                            "SAF_REQUIRED",
+                            "Folder access required. Call requestDocumentsFolderAccess().",
                             null
                         )
                     }
                     return@execute
                 }
 
-                val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
-                val items = filePage(dir, recursive, limit, offset, "document")
-                mainHandler.post { result.success(items) }
+                if (sdk >= Build.VERSION_CODES.R && !hasManage) {
+                    mainHandler.post {
+                        result.error(
+                            "PERMISSION_REQUIRED",
+                            "MANAGE_EXTERNAL_STORAGE required",
+                            null
+                        )
+                    }
+                    return@execute
+                }
+
+                mainHandler.post { result.success(emptyList<Map<String, Any?>>()) }
+            } catch (e: SecurityException) {
+                mainHandler.post {
+                    result.error("PERMISSION_DENIED", e.message ?: "Permission denied", null)
+                }
             } catch (e: Exception) {
-                mainHandler.post { result.error("QUERY_ERROR", "Error querying documents: ${e.message}", null) }
+                mainHandler.post {
+                    result.error("QUERY_ERROR", "Error querying documents: ${e.message}", null)
+                }
             }
         }
     }
-
 
     private fun queryWithLimitOffset(
         uri: Uri,
@@ -373,7 +531,9 @@ class MediaQueryManager(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val queryArgs = Bundle().apply {
                 putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
-                if (selectionArgs != null) putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, selectionArgs)
+                if (selectionArgs != null) {
+                    putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, selectionArgs)
+                }
                 putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, sortOrder)
                 if (limit != null && limit > 0) putInt(ContentResolver.QUERY_ARG_LIMIT, limit)
                 if (offset > 0) putInt(ContentResolver.QUERY_ARG_OFFSET, offset)
@@ -382,18 +542,19 @@ class MediaQueryManager(
                 while (cursor.moveToNext()) results.add(mapper(cursor))
             }
         } else {
-            contentResolver.query(uri, projection, selection, selectionArgs, sortOrder)?.use { cursor ->
-                var current = 0
-                var count = 0
-                while (cursor.moveToNext()) {
-                    if (current >= offset) {
-                        if (limit != null && limit > 0 && count >= limit) break
-                        results.add(mapper(cursor))
-                        count++
+            contentResolver.query(uri, projection, selection, selectionArgs, sortOrder)
+                ?.use { cursor ->
+                    var current = 0
+                    var count = 0
+                    while (cursor.moveToNext()) {
+                        if (current >= offset) {
+                            if (limit != null && limit > 0 && count >= limit) break
+                            results.add(mapper(cursor))
+                            count++
+                        }
+                        current++
                     }
-                    current++
                 }
-            }
         }
         return results
     }
@@ -402,25 +563,46 @@ class MediaQueryManager(
         uri: Uri, projection: Array<String>, selection: String?,
         selectionArgs: Array<String>?, sortOrder: String?, action: (Cursor) -> Unit
     ) {
-        contentResolver.query(uri, projection, selection, selectionArgs, sortOrder)?.use { cursor ->
-            while (cursor.moveToNext()) action(cursor)
-        }
+        contentResolver.query(uri, projection, selection, selectionArgs, sortOrder)
+            ?.use { cursor ->
+                while (cursor.moveToNext()) action(cursor)
+            }
     }
 
     private fun safeGetLong(cursor: Cursor, columnName: String): Long =
-        try { cursor.getLong(cursor.getColumnIndexOrThrow(columnName)) } catch (e: Exception) { 0L }
+        try {
+            cursor.getLong(cursor.getColumnIndexOrThrow(columnName))
+        } catch (e: Exception) {
+            0L
+        }
 
     private fun safeGetInt(cursor: Cursor, columnName: String): Int =
-        try { cursor.getInt(cursor.getColumnIndexOrThrow(columnName)) } catch (e: Exception) { 0 }
+        try {
+            cursor.getInt(cursor.getColumnIndexOrThrow(columnName))
+        } catch (e: Exception) {
+            0
+        }
 
     private fun safeGetString(cursor: Cursor, columnName: String): String? =
-        try { cursor.getString(cursor.getColumnIndexOrThrow(columnName)) } catch (e: Exception) { null }
+        try {
+            cursor.getString(cursor.getColumnIndexOrThrow(columnName))
+        } catch (e: Exception) {
+            null
+        }
 
     private fun cursorToMap(cursor: Cursor, mediaType: MediaType): Map<String, Any?> {
-        val id = safeGetLong(cursor, if (mediaType == MediaType.IMAGE) MediaStore.Images.Media._ID else MediaStore.Video.Media._ID)
+        val id = safeGetLong(
+            cursor,
+            if (mediaType == MediaType.IMAGE) MediaStore.Images.Media._ID
+            else MediaStore.Video.Media._ID
+        )
         val uri = when (mediaType) {
-            MediaType.IMAGE -> ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-            MediaType.VIDEO -> ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
+            MediaType.IMAGE -> ContentUris.withAppendedId(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id
+            )
+            MediaType.VIDEO -> ContentUris.withAppendedId(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id
+            )
         }
         val map = mutableMapOf<String, Any?>(
             "id" to id.toString(),
@@ -440,14 +622,15 @@ class MediaQueryManager(
         return map
     }
 
-
     private fun filePage(
         root: File, recursive: Boolean, limit: Int?, offset: Int, category: String
     ): List<Map<String, Any?>> {
         val maxDepth = if (recursive) 3 else 0
         val files = walkDirectory(root, maxDepth)
         val sorted = files.sortedByDescending { it.lastModified() }
-        val page = sorted.drop(offset).let { if (limit != null && limit > 0) it.take(limit) else it }
+        val page = sorted.drop(offset).let {
+            if (limit != null && limit > 0) it.take(limit) else it
+        }
         return page.map { fileToMap(it, category) }
     }
 
@@ -525,6 +708,12 @@ class MediaQueryManager(
             "zip" -> "application/zip"
             "rar" -> "application/x-rar-compressed"
             "apk" -> "application/vnd.android.package-archive"
+            "epub" -> "application/epub+zip"
+            "fb2" -> "application/octet-stream"
+            "mobi" -> "application/octet-stream"
+            "html", "htm" -> "text/html"
+            "rtf" -> "text/rtf"
+            "pem" -> "application/x-pem-file"
             else -> "application/octet-stream"
         }
     }

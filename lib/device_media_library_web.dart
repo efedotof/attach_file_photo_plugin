@@ -88,7 +88,7 @@ class DeviceMediaLibraryWeb extends DeviceMediaLibraryPlatform {
       final mimeType = file.type;
       final fileType = _getFileTypeFromMime(mimeType);
 
-      final fileInfo = {
+      final fileInfo = <String, dynamic>{
         'id': fileId,
         'name': file.name,
         'size': file.size,
@@ -423,4 +423,35 @@ class DeviceMediaLibraryWeb extends DeviceMediaLibraryPlatform {
 
   @override
   Future<bool> requestAllFilesPermission() async => true;
+
+  @override
+  Future<Map<String, dynamic>> checkStorageAccess({
+    String folder = 'download',
+  }) async =>
+      {
+        'supported': false,
+        'accessMode': 'none',
+        'hasAccess': false,
+        'requiresSaf': false,
+        'requiresManage': false,
+        'reason': 'Not supported on this platform',
+      };
+
+  @override
+  Future<bool> hasDownloadsFolderAccess() async => false;
+
+  @override
+  Future<bool> requestDownloadsFolderAccess() async => false;
+
+  @override
+  Future<bool> revokeDownloadsFolderAccess() async => false;
+
+  @override
+  Future<bool> hasDocumentsFolderAccess() async => false;
+
+  @override
+  Future<bool> requestDocumentsFolderAccess() async => false;
+
+  @override
+  Future<bool> revokeDocumentsFolderAccess() async => false;
 }

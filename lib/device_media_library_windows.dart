@@ -249,7 +249,7 @@ class DeviceMediaLibraryWindows extends DeviceMediaLibraryPlatform {
     return result.map<Map<String, dynamic>>((item) {
       final map = Map<String, dynamic>.from(item as Map<dynamic, dynamic>);
 
-      final mediaData = {
+      final mediaData = <String, dynamic>{
         'id': map['id']?.toString() ?? '',
         'name': map['name']?.toString() ?? '',
         'uri': map['uri']?.toString() ?? '',
@@ -306,7 +306,7 @@ class DeviceMediaLibraryWindows extends DeviceMediaLibraryPlatform {
     return result.map<Map<String, dynamic>>((item) {
       final map = Map<String, dynamic>.from(item as Map<dynamic, dynamic>);
 
-      final mediaData = {
+      final mediaData = <String, dynamic>{
         'id': map['id']?.toString() ?? '',
         'name': map['name']?.toString() ?? '',
         'uri': map['uri']?.toString() ?? '',
@@ -481,4 +481,35 @@ class DeviceMediaLibraryWindows extends DeviceMediaLibraryPlatform {
     }
     return null;
   }
+
+  @override
+  Future<Map<String, dynamic>> checkStorageAccess({
+    String folder = 'download',
+  }) async =>
+      {
+        'supported': false,
+        'accessMode': 'none',
+        'hasAccess': false,
+        'requiresSaf': false,
+        'requiresManage': false,
+        'reason': 'Not supported on this platform',
+      };
+
+  @override
+  Future<bool> hasDownloadsFolderAccess() async => false;
+
+  @override
+  Future<bool> requestDownloadsFolderAccess() async => false;
+
+  @override
+  Future<bool> revokeDownloadsFolderAccess() async => false;
+
+  @override
+  Future<bool> hasDocumentsFolderAccess() async => false;
+
+  @override
+  Future<bool> requestDocumentsFolderAccess() async => false;
+
+  @override
+  Future<bool> revokeDocumentsFolderAccess() async => false;
 }

@@ -3,7 +3,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:flutter/services.dart'
+    show Clipboard, ClipboardData, PlatformException;
 import 'package:device_media_library/device_media_library.dart';
 
 void main() {
@@ -13,20 +14,35 @@ void main() {
 
 enum LibrarySection { media, audio, downloads, documents }
 
-class MyApp extends StatefulWidget {
+class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
-  State<MyApp> createState() => _MyAppState();
+  Widget build(BuildContext context) {
+    return const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: MediaLibraryScreen(),
+    );
+  }
 }
 
-class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+class MediaLibraryScreen extends StatefulWidget {
+  const MediaLibraryScreen({super.key});
+
+  @override
+  State<MediaLibraryScreen> createState() => _MediaLibraryScreenState();
+}
+
+class _MediaLibraryScreenState extends State<MediaLibraryScreen>
+    with WidgetsBindingObserver {
   final DeviceMediaLibrary _lib = DeviceMediaLibrary();
 
   LibrarySection _section = LibrarySection.media;
 
   bool _hasBasicPermission = false;
   bool _hasAllFilesPermission = false;
+
+  Map<String, dynamic>? _storageSupport;
 
   final List<Map<String, dynamic>> _mediaList = [];
   final List<Map<String, dynamic>> _audioList = [];
@@ -61,12 +77,42 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Future<void> _refreshAllFilesPermission() async {
     final has = await _lib.checkAllFilesPermission();
     if (has != _hasAllFilesPermission) {
+      if (!mounted) return;
       setState(() => _hasAllFilesPermission = has);
       if (has &&
           (_section == LibrarySection.downloads ||
               _section == LibrarySection.documents)) {
+        await _refreshStorageSupport();
         await _loadCurrentSection();
       }
+    }
+  }
+
+  Future<void> _refreshStorageSupport() async {
+    if (kIsWeb) return;
+    final folder = _folderForSection(_section);
+    if (folder == null) {
+      if (!mounted) return;
+      setState(() => _storageSupport = null);
+      return;
+    }
+    try {
+      final support = await _lib.checkStorageAccess(folder: folder);
+      if (!mounted) return;
+      setState(() => _storageSupport = support);
+    } catch (e) {
+      debugPrint('checkStorageAccess error: $e');
+    }
+  }
+
+  String? _folderForSection(LibrarySection s) {
+    switch (s) {
+      case LibrarySection.downloads:
+        return 'download';
+      case LibrarySection.documents:
+        return 'document';
+      default:
+        return null;
     }
   }
 
@@ -75,6 +121,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       setState(() {
         _hasBasicPermission = true;
         _hasAllFilesPermission = true;
+        _storageSupport = {
+          'supported': false,
+          'accessMode': 'none',
+          'hasAccess': false,
+          'requiresSaf': false,
+          'requiresManage': false,
+          'reason': 'Web',
+        };
       });
       return;
     }
@@ -84,12 +138,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       hasBasic = await _lib.requestPermission();
     }
 
-    bool hasAll = await _lib.checkAllFilesPermission();
+    final bool hasAll = await _lib.checkAllFilesPermission();
 
+    if (!mounted) return;
     setState(() {
       _hasBasicPermission = hasBasic;
       _hasAllFilesPermission = hasAll;
     });
+
+    await _refreshStorageSupport();
 
     if (hasBasic) {
       await _loadCurrentSection();
@@ -99,8 +156,55 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Future<void> _requestAllFilesAccess() async {
     if (kIsWeb) return;
     final ok = await _lib.requestAllFilesPermission();
-
     debugPrint('requestAllFilesPermission returned: $ok');
+  }
+
+  Future<void> _requestDownloadsFolderAccess() async {
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+    try {
+      final granted = await _lib.requestDownloadsFolderAccess();
+      try {
+        final support = await _lib.checkStorageAccess(folder: 'download');
+        if (!mounted) return;
+        setState(() => _storageSupport = support);
+      } catch (e) {
+        debugPrint('checkStorageAccess error: $e');
+      }
+      if (granted) {
+        await _loadCurrentSection();
+      } else {
+        _showInfo('Доступ к папке Download не выдан');
+      }
+    } catch (e) {
+      if (mounted) _showError('Не удалось открыть проводник: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _requestDocumentsFolderAccess() async {
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+    try {
+      final granted = await _lib.requestDocumentsFolderAccess();
+      try {
+        final support = await _lib.checkStorageAccess(folder: 'document');
+        if (!mounted) return;
+        setState(() => _storageSupport = support);
+      } catch (e) {
+        debugPrint('checkStorageAccess error: $e');
+      }
+      if (granted) {
+        await _loadCurrentSection();
+      } else {
+        _showInfo('Доступ к папке Documents не выдан');
+      }
+    } catch (e) {
+      if (mounted) _showError('Не удалось открыть проводник: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _loadCurrentSection() async {
@@ -111,6 +215,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       switch (_section) {
         case LibrarySection.media:
           final items = await _lib.getAllMedia(limit: 200, offset: 0) ?? [];
+          if (!mounted) return;
           setState(() {
             _mediaList
               ..clear()
@@ -121,6 +226,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
         case LibrarySection.audio:
           final items = await _lib.getAudio(limit: 200, offset: 0) ?? [];
+          if (!mounted) return;
           setState(() {
             _audioList
               ..clear()
@@ -129,30 +235,68 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           break;
 
         case LibrarySection.downloads:
+          final mode = _storageSupport?['accessMode']?.toString() ?? 'none';
+          final requiresSaf = _storageSupport?['requiresSaf'] == true;
+          if (mode == 'saf' && requiresSaf) {
+            if (!mounted) return;
+            setState(() => _downloadsList.clear());
+            break;
+          }
           try {
-            final items = await _lib.getDownloads(limit: 200, offset: 0) ?? [];
+            final items = await _lib.getDownloads(limit: 500, offset: 0) ?? [];
+            if (!mounted) return;
             setState(() {
               _downloadsList
                 ..clear()
                 ..addAll(items);
             });
-          } catch (e) {
-            debugPrint('getDownloads error: $e');
-            if (mounted) _showError('Не удалось загрузить Download: $e');
+          } on PlatformException catch (e) {
+            debugPrint('getDownloads: ${e.code} ${e.message}');
+            if (!mounted) return;
+            if (e.code == 'SAF_REQUIRED' || e.code == 'PERMISSION_REQUIRED') {
+              try {
+                final support = await _lib.checkStorageAccess(
+                  folder: 'download',
+                );
+                if (!mounted) return;
+                setState(() => _storageSupport = support);
+              } catch (_) {}
+            } else {
+              _showError('Не удалось загрузить Download: ${e.message}');
+            }
           }
           break;
 
         case LibrarySection.documents:
+          final mode = _storageSupport?['accessMode']?.toString() ?? 'none';
+          final requiresSaf = _storageSupport?['requiresSaf'] == true;
+          if (mode == 'saf' && requiresSaf) {
+            if (!mounted) return;
+            setState(() => _documentsList.clear());
+            break;
+          }
           try {
-            final items = await _lib.getDocuments(limit: 200, offset: 0) ?? [];
+            final items = await _lib.getDocuments(limit: 500, offset: 0) ?? [];
+            if (!mounted) return;
             setState(() {
               _documentsList
                 ..clear()
                 ..addAll(items);
             });
-          } catch (e) {
-            debugPrint('getDocuments error: $e');
-            if (mounted) _showError('Не удалось загрузить Documents: $e');
+          } on PlatformException catch (e) {
+            debugPrint('getDocuments: ${e.code} ${e.message}');
+            if (!mounted) return;
+            if (e.code == 'SAF_REQUIRED' || e.code == 'PERMISSION_REQUIRED') {
+              try {
+                final support = await _lib.checkStorageAccess(
+                  folder: 'document',
+                );
+                if (!mounted) return;
+                setState(() => _storageSupport = support);
+              } catch (_) {}
+            } else {
+              _showError('Не удалось загрузить Documents: ${e.message}');
+            }
           }
           break;
       }
@@ -165,16 +309,22 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   }
 
   void _showError(String msg) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   void _showInfo(String msg) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  void _onSectionChanged(LibrarySection s) {
+  Future<void> _onSectionChanged(LibrarySection s) async {
     setState(() => _section = s);
-    _loadCurrentSection();
+    if (!kIsWeb &&
+        (s == LibrarySection.downloads || s == LibrarySection.documents)) {
+      await _refreshStorageSupport();
+    }
+    await _loadCurrentSection();
   }
 
   void _preloadThumbs(List<Map<String, dynamic>> items) {
@@ -418,10 +568,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     final size = _int(m, 'size');
     final dur = _int(m, 'duration');
 
-    showModalBottomSheet(
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (context) {
+      builder: (sheetContext) {
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -451,8 +601,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                         icon: const Icon(Icons.copy),
                         label: const Text('Копировать URI'),
                         onPressed: () {
+                          Navigator.of(sheetContext).pop();
                           Clipboard.setData(ClipboardData(text: uri));
-                          Navigator.pop(context);
                           _showInfo('URI скопирован');
                         },
                       ),
@@ -462,9 +612,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                       child: ElevatedButton.icon(
                         icon: const Icon(Icons.download),
                         label: const Text('Прочитать'),
-                        onPressed: () async {
-                          Navigator.pop(context);
-                          await _readBytes(m);
+                        onPressed: () {
+                          Navigator.of(sheetContext).pop();
+                          _readBytes(m);
                         },
                       ),
                     ),
@@ -514,6 +664,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
     try {
       final bytes = await _lib.getFileBytes(uri);
+      if (!mounted) return;
       if (bytes == null) {
         _showError('Не удалось прочитать файл');
         return;
@@ -522,7 +673,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       if (mounted) {
         final type = _str(m, 'type');
         if (type == 'image') {
-          showDialog(
+          showDialog<void>(
             context: context,
             builder: (_) =>
                 Dialog(child: InteractiveViewer(child: Image.memory(bytes))),
@@ -530,7 +681,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         }
       }
     } catch (e) {
-      _showError('Ошибка чтения: $e');
+      if (mounted) _showError('Ошибка чтения: $e');
     }
   }
 
@@ -557,11 +708,69 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       );
     }
 
-    final needsAll =
+    final needsStorage =
         _section == LibrarySection.downloads ||
         _section == LibrarySection.documents;
 
-    if (needsAll && !_hasAllFilesPermission) {
+    if (!needsStorage) return const SizedBox.shrink();
+
+    final accessMode = _storageSupport?['accessMode']?.toString() ?? 'none';
+    final requiresSaf = _storageSupport?['requiresSaf'] == true;
+    final requiresManage = _storageSupport?['requiresManage'] == true;
+    final supported = _storageSupport?['supported'] != false;
+
+    if (!supported) {
+      final reason = _storageSupport?['reason']?.toString() ?? '';
+      return Container(
+        color: Colors.grey.shade200,
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            const Icon(Icons.block, color: Colors.grey),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                reason.isNotEmpty
+                    ? reason
+                    : 'Доступ к этой папке не поддерживается на устройстве',
+                style: const TextStyle(color: Colors.black87),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (accessMode == 'saf' && requiresSaf) {
+      final folderName = _section == LibrarySection.downloads
+          ? 'Download'
+          : 'Documents';
+      return Container(
+        color: Colors.blue.shade50,
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            const Icon(Icons.folder_open, color: Colors.blue),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Выберите папку $folderName в проводнике. '
+                'Это нужно сделать один раз — потом доступ сохранится.',
+                style: const TextStyle(color: Colors.black87),
+              ),
+            ),
+            TextButton(
+              onPressed: _section == LibrarySection.downloads
+                  ? _requestDownloadsFolderAccess
+                  : _requestDocumentsFolderAccess,
+              child: const Text('Выбрать'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (requiresManage && !_hasAllFilesPermission) {
       return Container(
         color: Colors.red.shade50,
         padding: const EdgeInsets.all(12),
@@ -589,65 +798,55 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        appBar: AppBar(
-          title: Text(_titleForSection()),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Обновить',
-              onPressed: _loadCurrentSection,
-            ),
-          ],
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(96),
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 8,
-                  ),
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _chip(
-                          'Медиа',
-                          Icons.photo_library,
-                          LibrarySection.media,
-                        ),
-                        const SizedBox(width: 8),
-                        _chip('Музыка', Icons.music_note, LibrarySection.audio),
-                        const SizedBox(width: 8),
-                        _chip(
-                          'Download',
-                          Icons.download,
-                          LibrarySection.downloads,
-                        ),
-                        const SizedBox(width: 8),
-                        _chip(
-                          'Documents',
-                          Icons.folder,
-                          LibrarySection.documents,
-                        ),
-                      ],
-                    ),
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_titleForSection()),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Обновить',
+            onPressed: _loadCurrentSection,
+          ),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(96),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _chip('Медиа', Icons.photo_library, LibrarySection.media),
+                      const SizedBox(width: 8),
+                      _chip('Музыка', Icons.music_note, LibrarySection.audio),
+                      const SizedBox(width: 8),
+                      _chip(
+                        'Download',
+                        Icons.download,
+                        LibrarySection.downloads,
+                      ),
+                      const SizedBox(width: 8),
+                      _chip(
+                        'Documents',
+                        Icons.folder,
+                        LibrarySection.documents,
+                      ),
+                    ],
                   ),
                 ),
-                if (_isLoading) const LinearProgressIndicator(minHeight: 2),
-              ],
-            ),
+              ),
+              if (_isLoading) const LinearProgressIndicator(minHeight: 2),
+            ],
           ),
         ),
-        body: Column(
-          children: [
-            _buildPermissionBanner(),
-            Expanded(child: _buildCurrentSection()),
-          ],
-        ),
+      ),
+      body: Column(
+        children: [
+          _buildPermissionBanner(),
+          Expanded(child: _buildCurrentSection()),
+        ],
       ),
     );
   }
