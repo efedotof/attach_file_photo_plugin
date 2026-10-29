@@ -1,4 +1,3 @@
-
 # device_media_library
 
 A Flutter plugin for accessing the device media library, the shared
@@ -9,56 +8,91 @@ The plugin implements platform channels for Android (Kotlin) and provides
 a web implementation based on the HTML File API. A Dart-only Windows
 implementation provides a partial fallback for desktop.
 
+## Table of contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Platform support](#platform-support)
+- [Installation](#installation)
+- [Android configuration](#android-configuration)
+- [Initialization](#initialization)
+- [Permissions](#permissions)
+  - [Scoped media permissions](#scoped-media-permissions)
+  - [All-files access](#all-files-access)
+  - [Folder-specific access (SAF)](#folder-specific-access-saf)
+- [Retrieving media from MediaStore](#retrieving-media-from-mediastore)
+- [Audio](#audio)
+- [Thumbnails](#thumbnails)
+- [Reading files from Download and Documents](#reading-files-from-download-and-documents)
+  - [Storage access modes](#storage-access-modes)
+  - [Inspecting access with checkStorageAccess](#inspecting-access-with-checkstorageaccess)
+  - [SAF-based folder access](#saf-based-folder-access)
+  - [MANAGE_EXTERNAL_STORAGE fallback](#manage_external_storage-fallback)
+- [Reading file contents](#reading-file-contents)
+- [Getting file paths](#getting-file-paths)
+- [File picking (web and Windows)](#file-picking-web-and-windows)
+- [Video playback](#video-playback)
+- [Web implementation](#web-implementation)
+- [Return types](#return-types)
+- [Error codes](#error-codes)
+- [Limitations](#limitations)
+- [Example application](#example-application)
+- [License](#license)
+
 ## Overview
 
 The plugin exposes a unified Dart API that queries the Android MediaStore
 for indexed media (images, video, audio) and reads the Download and
-Documents directories through either the MediaStore or the java.io.File
-API, depending on the permissions granted to the application.
+Documents directories through either the MediaStore, the java.io.File API,
+or the Storage Access Framework (SAF), depending on the permissions
+granted to the application.
 
-Two permission models are supported:
+Three access models are supported:
 
-1. The scoped permissions model (Android 10 and later), which provides
-   access to media files through MediaStore and permits reading files
-   created by the application itself.
-2. The all-files access model (Android 11 and later), which permits
-   direct filesystem access to the Download and Documents directories
-   through the java.io.File API. This model requires the
-   MANAGE_EXTERNAL_STORAGE permission, which Google Play reviews on a
+1. **Scoped permissions** (Android 10 and later) — access to media files
+   through MediaStore and reading of files created by the application
+   itself.
+2. **All-files access** (Android 11 and later) — direct filesystem access
+   to the Download and Documents directories through the java.io.File API.
+   Requires `MANAGE_EXTERNAL_STORAGE`, which Google Play reviews on a
    per-application basis.
+3. **SAF folder access** (Android 11 and later) — per-folder access granted
+   by the user through the system folder picker. Persists across restarts
+   and does not require `MANAGE_EXTERNAL_STORAGE`.
 
 ## Features
 
 - Retrieval of images, video and audio from MediaStore with pagination
-  (limit and offset), album filtering and thumbnail generation.
+  (`limit` / `offset`), album filtering and thumbnail generation.
 - Enumeration of arbitrary files inside the Download directory through
-  either the java.io.File API (full access) or MediaStore.Downloads
+  the `java.io.File` API (full access), SAF, or `MediaStore.Downloads`
   (scoped access).
-- Enumeration of arbitrary files inside the Documents directory. This
-  functionality requires MANAGE_EXTERNAL_STORAGE on Android 11 and
-  later.
-- Reading file contents by URI, supporting both content:// and file://
-  schemes.
+- Enumeration of arbitrary files inside the Documents directory. Requires
+  `MANAGE_EXTERNAL_STORAGE` or SAF access on Android 11 and later.
+- Reading file contents by URI, supporting both `content://` and
+  `file://` schemes.
+- Conversion of a URI to an absolute file path via `getFilePath`.
 - Streaming video playback through a PlatformView backed by
-  android.media.MediaPlayer.
+  `android.media.MediaPlayer`.
 - Web implementation supporting file picking and drag-and-drop through
   the HTML File API.
-- Capability to request and query both the scoped permissions
-  (READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ_MEDIA_AUDIO) and the
-  all-files access permission (MANAGE_EXTERNAL_STORAGE).
+- Windows fallback with file picking support.
+- Capability to request and query scoped permissions
+  (`READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, `READ_MEDIA_AUDIO`),
+  all-files access (`MANAGE_EXTERNAL_STORAGE`), and per-folder SAF access.
 
 ## Platform support
 
-| Platform  | Status          | Notes                                               |
-|-----------|-----------------|-----------------------------------------------------|
-| Android   | Full            | Requires API 21 or later.                           |
-| Web       | Partial         | File picking only. No access to system directories. |
-| Windows   | Partial         | File picking only.                                  |
-| iOS       | Not implemented | The platform stub returns UnimplementedError.       |
+| Platform  | Status          | Notes                                                |
+|-----------|-----------------|------------------------------------------------------|
+| Android   | Full            | Requires API 21 or later.                            |
+| Web       | Partial         | File picking only. No access to system directories.  |
+| Windows   | Partial         | File picking only.                                   |
+| iOS       | Not implemented | The platform stub returns `UnimplementedError`.      |
 
 ## Installation
 
-Add the dependency to the pubspec.yaml file:
+Add the dependency to `pubspec.yaml`:
 
 ```yaml
 dependencies:
@@ -70,8 +104,8 @@ For a published package, replace the path with a version constraint.
 
 ## Android configuration
 
-The following permissions must be declared in the application manifest
-(android/app/src/main/AndroidManifest.xml):
+Declare the following permissions in
+`android/app/src/main/AndroidManifest.xml`:
 
 ```xml
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -91,12 +125,12 @@ The following permissions must be declared in the application manifest
 </manifest>
 ```
 
-The READ_EXTERNAL_STORAGE permission applies to Android 12 and earlier.
-The READ_MEDIA_IMAGES, READ_MEDIA_VIDEO and READ_MEDIA_AUDIO permissions
-apply to Android 13 and later. The MANAGE_EXTERNAL_STORAGE permission is
-required only if direct filesystem access to the Download or Documents
-directories is needed. The tools namespace must be declared in the
-manifest element.
+- `READ_EXTERNAL_STORAGE` applies to Android 12 and earlier.
+- `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, `READ_MEDIA_AUDIO` apply to
+  Android 13 and later.
+- `MANAGE_EXTERNAL_STORAGE` is only needed if direct filesystem access to
+  Download or Documents is required. The `tools` namespace must be
+  declared on the `manifest` element.
 
 ## Initialization
 
@@ -111,13 +145,13 @@ void main() {
 }
 ```
 
-The initialize method selects the appropriate platform implementation
-based on defaultTargetPlatform. Calling ensureInitialized from within the
-plugin methods is idempotent and safe to invoke repeatedly.
+`initialize` selects the appropriate platform implementation based on
+`defaultTargetPlatform`. `ensureInitialized` is idempotent and is called
+internally by every plugin method.
 
 ## Permissions
 
-The plugin exposes four methods for permission management:
+The plugin exposes several methods for permission management:
 
 ```dart
 final lib = DeviceMediaLibrary();
@@ -131,19 +165,41 @@ final bool hasAll = await lib.checkAllFilesPermission();
 await lib.requestAllFilesPermission();
 ```
 
-The requestAllFilesPermission method opens the system settings screen
-because Android does not expose a standard in-process dialog for this
-permission. The method returns false immediately after launching the
-settings screen. To determine whether the user actually granted the
-permission, call checkAllFilesPermission after the application returns
-to the foreground. This can be implemented using WidgetsBindingObserver
-and the didChangeAppLifecycleState callback.
+### Scoped media permissions
+
+`checkPermission` / `requestPermission` cover `READ_MEDIA_*` on
+Android 13+ and `READ_EXTERNAL_STORAGE` on Android 12 and earlier.
+
+### All-files access
+
+`requestAllFilesPermission` opens the system settings screen because
+Android does not expose a standard in-process dialog for this permission.
+The method returns `false` immediately after launching the settings screen.
+To determine whether the user actually granted the permission, call
+`checkAllFilesPermission` after the application returns to the foreground.
+This is typically done with `WidgetsBindingObserver` and
+`didChangeAppLifecycleState`:
+
+```dart
+@override
+void didChangeAppLifecycleState(AppLifecycleState state) {
+  if (state == AppLifecycleState.resumed && !kIsWeb) {
+    _refreshAllFilesPermission();
+  }
+}
+```
+
+### Folder-specific access (SAF)
+
+On Android 11+ the plugin can grant access to the Download and Documents
+folders individually through the Storage Access Framework, without
+`MANAGE_EXTERNAL_STORAGE`. See
+[SAF-based folder access](#saf-based-folder-access).
 
 ## Retrieving media from MediaStore
 
 Images, video and audio are queried through the MediaStore content
-provider. All methods support the limit and offset parameters for
-pagination.
+provider. All methods support `limit` and `offset` for pagination.
 
 ```dart
 final images = await lib.getImages(limit: 50, offset: 0);
@@ -159,11 +215,18 @@ final fromAlbum = await lib.getMediaFromAlbum(
 );
 ```
 
-Each returned element is a map containing at least the following keys:
-id, name, uri, dateAdded, size, type, width, height, albumId and
-albumName. For video and audio entries, the map additionally contains a
-duration key expressed in milliseconds. For audio entries, the map also
-contains artist and album keys.
+Each returned element contains at least the following keys:
+`id`, `name`, `uri`, `dateAdded`, `size`, `type`, `width`, `height`,
+`albumId`, `albumName`.
+
+- Video and audio entries additionally contain `duration` (milliseconds).
+- Audio entries also contain `artist`, `album` and `mimeType`.
+
+## Audio
+
+`getAudio(limit, offset)` returns audio tracks indexed by MediaStore.
+Fields: `id`, `name`, `uri`, `dateAdded`, `size`, `duration`, `mimeType`,
+`artist`, `album`, `albumId`, `albumName`, `type`, `width`, `height`.
 
 ## Thumbnails
 
@@ -179,67 +242,163 @@ final Uint8List? bytes = await lib.getThumbnail(
 );
 ```
 
-On Android 10 and later, image thumbnails are produced by
-ContentResolver.loadThumbnail. Video thumbnails are produced by
-MediaMetadataRetriever with a fallback to the default frame. Thumbnail
+On Android 10+ image thumbnails are produced by
+`ContentResolver.loadThumbnail`. Video thumbnails use
+`MediaMetadataRetriever` with a fallback to the default frame. Thumbnail
 generation is not available for arbitrary files from Download or
-Documents; for those files the caller should render an icon based on the
-mimeType value.
+Documents; render an icon based on `mimeType` for those.
 
 ## Reading files from Download and Documents
 
-Two methods are provided for directory enumeration. Both accept limit,
-offset and recursive parameters.
+Two methods are provided for directory enumeration. Both accept `limit`,
+`offset` and `recursive`.
 
 ```dart
 final downloads = await lib.getDownloads(limit: 100, offset: 0);
 final documents = await lib.getDocuments(limit: 100, offset: 0);
 ```
 
-The behaviour depends on the permissions granted to the application.
+Each returned element contains the following keys:
+`id`, `name`, `uri`, `path`, `dateAdded`, `size`, `mimeType`, `type`,
+`category`, `width`, `height`, `albumName`.
+The `type` key is derived from the MIME type and may be `image`, `video`,
+`audio` or `file`.
 
-For Download:
-- If MANAGE_EXTERNAL_STORAGE is granted or the Android version is below
-  11, the plugin enumerates the physical Download directory through the
-  java.io.File API and returns entries with file:// URIs.
-- If MANAGE_EXTERNAL_STORAGE is not granted and the Android version is
-  11 or later, the plugin falls back to MediaStore.Downloads and returns
-  only those files that MediaStore exposes to the application.
-- On Android 9 and earlier, the READ_EXTERNAL_STORAGE permission is
-  sufficient for full enumeration.
+### Storage access modes
 
-For Documents:
-- If MANAGE_EXTERNAL_STORAGE is granted or the Android version is below
-  11, the plugin enumerates the physical Documents directory through the
-  java.io.File API.
-- Otherwise, the method returns a PERMISSION_DENIED error.
+The behaviour depends on the permissions granted to the application. Use
+`checkStorageAccess` to inspect the current mode for a folder:
 
-Each returned element contains the following keys: id, name, uri, path,
-dateAdded, size, mimeType, type, category, width, height, albumName. The
-type key is derived from the MIME type and may be one of image, video,
-audio or file.
+```dart
+final support = await lib.checkStorageAccess(folder: 'download');
+// {
+//   'supported':     true,
+//   'accessMode':    'manage' | 'saf' | 'none',
+//   'hasAccess':     true,
+//   'requiresSaf':   false,
+//   'requiresManage': false,
+//   'reason':        '',
+// }
+```
+
+- `accessMode == 'manage'` — full filesystem access via
+  `MANAGE_EXTERNAL_STORAGE`. Enumeration uses `java.io.File`.
+- `accessMode == 'saf'` — per-folder access via Storage Access Framework.
+  When `requiresSaf == true`, the user must be prompted to pick the folder
+  (see below) before enumeration works.
+- `accessMode == 'none'` — no access. On Android 11+ enumeration of
+  Download falls back to `MediaStore.Downloads` (a partial subset);
+  Documents returns a permission error.
+
+### Inspecting access with checkStorageAccess
+
+`checkStorageAccess(folder: 'download' | 'document')` returns a map with
+the keys shown above. Use it whenever the section changes or the app
+resumes, then drive the UI accordingly (banner, permission button, etc.).
+
+### SAF-based folder access
+
+On Android 11+ without `MANAGE_EXTERNAL_STORAGE`, you can request access
+to a specific folder through the system picker:
+
+```dart
+// Download
+final bool hasAccess  = await lib.hasDownloadsFolderAccess();
+final bool granted    = await lib.requestDownloadsFolderAccess();
+final bool revoked    = await lib.revokeDownloadsFolderAccess();
+
+// Documents
+final bool hasAccessD = await lib.hasDocumentsFolderAccess();
+final bool grantedD   = await lib.requestDocumentsFolderAccess();
+final bool revokedD   = await lib.revokeDocumentsFolderAccess();
+```
+
+`request*FolderAccess` opens the system folder picker and returns `true`
+once the user grants access. Persist the result — SAF access survives
+restarts, so the prompt only needs to be shown once per folder. After a
+grant, re-run `checkStorageAccess` to refresh `accessMode`.
+
+When enumeration is attempted without SAF access, the plugin throws a
+`PlatformException` with code `SAF_REQUIRED` or `PERMISSION_REQUIRED`.
+Catch these and re-inspect storage access:
+
+```dart
+try {
+  final items = await lib.getDownloads(limit: 500, offset: 0) ?? [];
+} on PlatformException catch (e) {
+  if (e.code == 'SAF_REQUIRED' || e.code == 'PERMISSION_REQUIRED') {
+    final support = await lib.checkStorageAccess(folder: 'download');
+    // update UI: show the folder-picker banner
+  } else {
+    rethrow;
+  }
+}
+```
+
+### MANAGE_EXTERNAL_STORAGE fallback
+
+When `requiresManage == true` and the permission has not been granted,
+`requestAllFilesPermission()` opens the system settings screen. Combine
+this with `WidgetsBindingObserver` (see [All-files access](#all-files-access))
+so the list refreshes once the user returns to the app.
 
 ## Reading file contents
 
-The getFileBytes method reads a file by URI and returns the raw bytes:
+`getFileBytes` reads a file by URI and returns the raw bytes:
 
 ```dart
 final Uint8List? bytes = await lib.getFileBytes(uri);
 ```
 
-Both content:// and file:// URIs are supported. For content:// URIs the
-plugin uses ContentResolver.openInputStream. For file:// URIs the plugin
-reads the file directly through the java.io.File API. Reading file://
-URIs requires that the application has permission to access the
-corresponding path.
+Both `content://` and `file://` URIs are supported. For `content://` URIs
+the plugin uses `ContentResolver.openInputStream`. For `file://` URIs the
+file is read directly through the `java.io.File` API. Reading `file://`
+URIs requires permission for the corresponding path.
+
+## Getting file paths
+
+`getFilePath` converts a `file://` URI (or an already-resolved path) to an
+absolute filesystem path:
+
+```dart
+final String? path = await lib.getFilePath(uri);
+```
+
+On Windows, `file://` URIs are decoded locally by the Dart
+implementation. On Android, the call is delegated to the platform channel.
+
+## File picking (web and Windows)
+
+The web and Windows implementations expose file picking through the HTML
+File API / native file dialog:
+
+```dart
+final List<Map<String, dynamic>>? picked = await lib.pickFiles(
+  multiple: true,
+  allowedFileTypes: ['image/*', 'video/*'],
+);
+
+final List<Map<String, dynamic>> dropped =
+    await lib.pickFilesFromDrop(files);
+
+final Uint8List bytes = await lib.readWebFile(fileId);
+final String url      = await lib.getWebFileUrl(fileId);
+lib.disposeWebFile(fileId); // release the object URL
+```
+
+Returned entries include `id`, `name`, `size`, `type`, `mimeType`, `uri`,
+`dateAdded`, `width`, `height`, `duration`, `albumId`, `albumName` and
+`isWebFile`. Image dimensions and video duration are resolved
+asynchronously.
+
+On web, remember to call `disposeWebFile` when the object URL is no longer
+needed to release memory.
 
 ## Video playback
 
-The plugin exposes a PlatformView for video playback based on
-android.media.MediaPlayer. The platform view is registered under the
-identifier device_media_library/video/view and must be created using
-AndroidView in Dart code. Playback control is performed through the
-following methods:
+A PlatformView backed by `android.media.MediaPlayer` is registered under
+`device_media_library/video/view` and must be embedded via `AndroidView`.
+Playback control:
 
 ```dart
 await lib.initializeVideo(videoPath: path, autoPlay: true);
@@ -248,21 +407,40 @@ await lib.pauseVideo();
 await lib.seekVideoTo(seconds);
 await lib.setVideoVolume(0.5);
 await lib.setVideoPlaybackSpeed(1.5);
+await lib.resetVideo();
 await lib.disposeVideo();
 ```
 
-Playback events such as onPrepared, onPlaybackUpdate, onBufferingUpdate,
-onCompleted, onError and onVideoSizeChanged are delivered through the
-videoEvents stream.
+State queries:
+
+```dart
+final double? duration = await lib.getVideoDuration();
+final double? position = await lib.getCurrentPosition();
+final bool?   playing  = await lib.isVideoPlaying();
+```
+
+Playback events (`onPrepared`, `onPlaybackUpdate`, `onBufferingUpdate`,
+`onCompleted`, `onError`, `onVideoSizeChanged`) are delivered through
+`lib.videoEvents`.
 
 ## Web implementation
 
-On web, only pickFiles, pickFilesFromDrop, readWebFile, getWebFileUrl
-and disposeWebFile are implemented. Directory enumeration methods return
-empty lists. File contents are read through the HTML FileReader API and
-object URLs are created through URL.createObjectURL. The caller is
-responsible for calling disposeWebFile to release the associated memory
-when the file is no longer needed.
+On web only the following methods are implemented:
+
+- `pickFiles`
+- `pickFilesFromDrop`
+- `readWebFile`
+- `getWebFileUrl`
+- `disposeWebFile`
+- `getFileBytes` (for `web_*` IDs)
+- `getThumbnail` (for `web_*` image IDs)
+
+Directory enumeration methods return empty lists. MediaStore-based
+methods return empty lists. File contents are read through the HTML
+`FileReader` API and object URLs through `URL.createObjectURL`.
+
+The caller is responsible for calling `disposeWebFile` to release the
+associated memory when the file is no longer needed.
 
 ## Return types
 
@@ -272,57 +450,65 @@ Methods that return collections use the following signature:
 Future<List<Map<String, dynamic>>?>
 ```
 
-The nullable return type indicates that a null value may be returned when
-the underlying platform channel yields no result. In practice, on Android
-the value is always a non-null list, possibly empty.
+The nullable return type indicates that `null` may be returned when the
+underlying platform channel yields no result. In practice, on Android the
+value is always a non-null list, possibly empty.
 
 ## Error codes
 
-Errors are reported through PlatformException. The following codes are
+Errors are reported through `PlatformException`. The following codes are
 used by the Android implementation:
 
-| Code                | Description                                     |
-|---------------------|-------------------------------------------------|
-| PERMISSION_DENIED   | The required permission has not been granted.   |
-| QUERY_ERROR         | The MediaStore query failed.                    |
-| ALBUM_ERROR         | Album enumeration failed.                       |
-| THUMBNAIL_ERROR     | Thumbnail generation failed.                    |
-| FILE_ERROR          | File access failed.                             |
-| INVALID_ARGUMENT    | An argument is missing or invalid.              |
-| NO_ACTIVITY         | The plugin is not attached to an Activity.      |
-| REQUEST_IN_PROGRESS | A permission request is already in progress.    |
+| Code                | Description                                       |
+|---------------------|---------------------------------------------------|
+| `PERMISSION_DENIED` | The required permission has not been granted.     |
+| `PERMISSION_REQUIRED` | Access is required but not granted (used by the file-enumeration APIs). |
+| `SAF_REQUIRED`      | SAF folder access has not been granted yet.       |
+| `QUERY_ERROR`       | The MediaStore query failed.                      |
+| `ALBUM_ERROR`       | Album enumeration failed.                         |
+| `THUMBNAIL_ERROR`   | Thumbnail generation failed.                      |
+| `FILE_ERROR`        | File access failed.                               |
+| `INVALID_ARGUMENT`  | An argument is missing or invalid.                |
+| `NO_ACTIVITY`       | The plugin is not attached to an Activity.        |
+| `REQUEST_IN_PROGRESS` | A permission request is already in progress.    |
 
 ## Limitations
 
-1. Full enumeration of the Download and Documents directories on Android
-   11 and later requires MANAGE_EXTERNAL_STORAGE. Google Play restricts
-   the availability of this permission to applications whose core
-   functionality depends on filesystem access, for example file managers,
-   backup utilities and antivirus applications. Applications that do not
-   satisfy this requirement should use the Storage Access Framework
-   dialog instead, which opens a system picker.
-
+1. Full enumeration of the Download and Documents directories on
+   Android 11+ requires either `MANAGE_EXTERNAL_STORAGE` or SAF folder
+   access. Google Play restricts the availability of `MANAGE_EXTERNAL_STORAGE`
+   to applications whose core functionality depends on filesystem access
+   (file managers, backup utilities, antivirus applications). Applications
+   that do not satisfy this requirement should use the SAF dialog.
 2. Reading arbitrary files from Download or Documents on Android 10
-   without MANAGE_EXTERNAL_STORAGE is not possible through this plugin.
-   The MediaStore.Downloads fallback exposes only a subset of files.
-
+   without full access is not possible through this plugin.
+   `MediaStore.Downloads` exposes only a subset of files.
 3. Thumbnail generation is available only for entries indexed by
-   MediaStore. For arbitrary files from Download or Documents, the caller
-   must render icons based on MIME type.
-
+   MediaStore. For arbitrary files from Download or Documents, render
+   icons based on MIME type.
 4. The Windows and web implementations do not expose directory
    enumeration. They support file picking only.
-
 5. On iOS, no implementation is provided. Calls return
-   UnimplementedError.
+   `UnimplementedError`.
 
 ## Example application
 
-See the example directory for a complete application demonstrating all
-features of the plugin, including permission handling, media grid,
-audio list and file listing.
+A complete example application is included under `example/`. It
+demonstrates:
+
+- Permission handling (`checkPermission` / `requestPermission`,
+  `checkAllFilesPermission`, `requestAllFilesPermission`).
+- Storage access inspection with `checkStorageAccess`.
+- SAF folder access for Download and Documents.
+- A media grid with lazy thumbnail loading.
+- An audio list.
+- File listing for Download and Documents with URI/path display and a
+  "read bytes" action.
+- Lifecycle-aware permission refresh via `WidgetsBindingObserver`.
+
+See `example/lib/main.dart` for the full implementation.
 
 ## License
 
-This project is distributed under the MIT License. See the LICENSE file
-for details.
+This project is distributed under the MIT License. See the `LICENSE`
+file for details.
