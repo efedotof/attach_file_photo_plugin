@@ -44,7 +44,9 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
       });
 
       if (result is List) {
-        return List<Map<String, dynamic>>.from(result);
+        return result.map((item) {
+          return Map<String, dynamic>.from(item as Map);
+        }).toList();
       }
       return [];
     } catch (e) {
@@ -62,7 +64,9 @@ class MethodChannelDeviceMediaLibrary extends DeviceMediaLibraryPlatform {
           await _methodChannel.invokeMethod('pickFilesFromDrop', files);
 
       if (result is List) {
-        return List<Map<String, dynamic>>.from(result);
+        return result.map((item) {
+          return Map<String, dynamic>.from(item as Map);
+        }).toList();
       }
       return [];
     } catch (e) {
