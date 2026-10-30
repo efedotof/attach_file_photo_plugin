@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -39,8 +40,11 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
 
     private var pendingDownloadsSafResult: MethodChannel.Result? = null
     private var pendingDocumentsSafResult: MethodChannel.Result? = null
+    private var pendingPickFilesResult: MethodChannel.Result? = null
 
     companion object {
+        private const val PICK_FILES_REQUEST_CODE = 20003
+
         @Volatile
         private var instance: DeviceMediaLibraryPlugin? = null
         fun getInstance(): DeviceMediaLibraryPlugin? = instance
@@ -92,7 +96,7 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
         activityBinding = binding
         permissionManager?.setActivityBinding(binding)
         binding.addActivityResultListener { requestCode, resultCode, data ->
-            handleSafResult(requestCode, resultCode, data)
+            handleActivityResult(requestCode, resultCode, data)
         }
     }
 
@@ -111,7 +115,7 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
         permissionManager?.setActivityBinding(null)
     }
 
-    private fun handleSafResult(
+    private fun handleActivityResult(
         requestCode: Int,
         resultCode: Int,
         data: Intent?
@@ -137,6 +141,64 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                     pending?.success(true)
                 } else {
                     pending?.success(false)
+                }
+                return true
+            }
+            
+            PICK_FILES_REQUEST_CODE -> {
+                val pending = pendingPickFilesResult
+                pendingPickFilesResult = null
+                if (resultCode == Activity.RESULT_OK) {
+                    val uris = mutableListOf<Uri>()
+                    val clipData = data?.clipData
+                    if (clipData != null) {
+                        for (i in 0 until clipData.itemCount) {
+                            clipData.getItemAt(i).uri?.let { uris.add(it) }
+                        }
+                    } else {
+                        data?.data?.let { uris.add(it) }
+                    }
+
+                    val results = uris.map { fileUri ->
+                        var name = fileUri.lastPathSegment ?: "Unknown"
+                        var size = 0L
+                        var mime = context.contentResolver.getType(fileUri) ?: "application/octet-stream"
+
+                        context.contentResolver.query(fileUri, null, null, null, null)?.use { cursor ->
+                            if (cursor.moveToFirst()) {
+                                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                                if (nameIndex != -1) name = cursor.getString(nameIndex)
+                                val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                                if (sizeIndex != -1) size = cursor.getLong(sizeIndex)
+                            }
+                        }
+
+                        val type = when {
+                            mime.startsWith("image/") -> "image"
+                            mime.startsWith("video/") -> "video"
+                            mime.startsWith("audio/") -> "audio"
+                            else -> "file"
+                        }
+
+                        mapOf(
+                            "id" to fileUri.toString(),
+                            "name" to name,
+                            "uri" to fileUri.toString(),
+                            "path" to fileUri.toString(),
+                            "dateAdded" to System.currentTimeMillis() / 1000L,
+                            "size" to size,
+                            "mimeType" to mime,
+                            "type" to type,
+                            "category" to "picked",
+                            "width" to 0,
+                            "height" to 0,
+                            "albumId" to "",
+                            "albumName" to "Picked Files"
+                        )
+                    }
+                    pending?.success(results)
+                } else {
+                    pending?.success(emptyList<Map<String, Any?>>())
                 }
                 return true
             }
@@ -253,6 +315,35 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
                     result.success(true)
                 }
 
+                "pickFiles" -> {
+                    val activity = activityBinding?.activity
+                    if (activity == null) {
+                        result.error("NO_ACTIVITY", "Activity is null", null)
+                        return
+                    }
+                    if (pendingPickFilesResult != null) {
+                        result.error("REQUEST_IN_PROGRESS", "File pick request already in progress", null)
+                        return
+                    }
+
+                    val multiple = call.argument<Boolean>("multiple") ?: true
+                    pendingPickFilesResult = result
+
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "*/*" 
+                        if (multiple) {
+                            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                        }
+                    }
+                    try {
+                        activity.startActivityForResult(intent, PICK_FILES_REQUEST_CODE)
+                    } catch (e: Exception) {
+                        pendingPickFilesResult = null
+                        result.error("PICK_ERROR", "Cannot open file picker: ${e.message}", null)
+                    }
+                }
+
                 "getImages" -> mediaQueryManager.getMedia(call, result, MediaType.IMAGE)
                 "getVideos" -> mediaQueryManager.getMedia(call, result, MediaType.VIDEO)
                 "getAllMedia" -> mediaQueryManager.getAllMedia(call, result)
@@ -283,7 +374,6 @@ class DeviceMediaLibraryPlugin : FlutterPlugin, ActivityAware {
     inner class VideoMethodCallHandler : MethodChannel.MethodCallHandler {
         override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
             when (call.method) {
-
                 "initialize" -> {
                     val path = call.argument<String>("videoPath")
                     val uri = call.argument<String>("videoUri")
